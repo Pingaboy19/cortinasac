@@ -6,9 +6,15 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { useCRM } from '@/lib/contexts/CRMContext';
 import Sidebar from '@/components/ui/Sidebar';
 
+interface Equipo {
+  id: string;
+  nombre: string;
+  members: string[];
+}
+
 export default function MiEquipoPage() {
   const { isAuthenticated, user } = useAuth();
-  const { equipos, empleados } = useCRM();
+  const { equipos } = useCRM();
   const router = useRouter();
   const [seccionActiva, setSeccionActiva] = useState('miequipo');
 
@@ -23,7 +29,7 @@ export default function MiEquipoPage() {
   }
 
   // Encontrar el equipo del empleado
-  const miEquipo = equipos.find(equipo => 
+  const miEquipo = (equipos as Equipo[]).find((equipo: Equipo) => 
     equipo.members.includes(user.id)
   );
 
@@ -49,15 +55,15 @@ export default function MiEquipoPage() {
               <div className="mt-6">
                 <h3 className="text-lg font-semibold mb-4">Miembros del Equipo</h3>
                 <div className="space-y-4">
-                  {miEquipo.members.map((miembroId) => {
-                    const empleado = empleados.find(emp => emp.id === miembroId);
+                  {miEquipo.members.map((miembroId: string) => {
+                    const miembro = (equipos as Equipo[]).find((e: Equipo) => e.id === miembroId);
                     return (
                       <div key={miembroId} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
                         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                          {empleado?.nombre[0].toUpperCase()}
+                          {miembro?.nombre[0].toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-medium">{empleado?.nombre}</p>
+                          <p className="font-medium">{miembro?.nombre}</p>
                           <p className="text-sm text-gray-500">
                             {miembroId === user.id ? '(Tú)' : 'Compañero de equipo'}
                           </p>
