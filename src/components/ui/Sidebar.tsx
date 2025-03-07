@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 
 interface SidebarProps {
   isAdmin: boolean;
@@ -12,6 +13,12 @@ interface SidebarProps {
 
 export default function Sidebar({ isAdmin, username, seccionActiva, onCambiarSeccion }: SidebarProps) {
   const { logout } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await logout();
+    router.push('/auth/login');
+  };
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
@@ -88,10 +95,10 @@ export default function Sidebar({ isAdmin, username, seccionActiva, onCambiarSec
 
       <div className="p-4 mt-auto border-t border-gray-200">
         <button
-          onClick={() => onCambiarSeccion('logout')}
+          onClick={handleLogout}
           className="w-full text-left p-2 text-red-600 hover:bg-red-50 rounded flex items-center"
         >
-          📋 Cerrar Sesión
+          🚪 Cerrar Sesión
         </button>
       </div>
     </aside>
