@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 
 export interface User {
   id: string;
@@ -22,6 +23,11 @@ export interface AuthContextType {
   eliminarEmpleado: (empleadoId: string) => void;
 }
 
+const ADMIN_CREDENTIALS = {
+  username: 'Ariel',
+  password: 'ariel123'
+};
+
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   login: async () => false,
@@ -34,95 +40,60 @@ export const AuthContext = createContext<AuthContextType>({
   eliminarEmpleado: () => {}
 });
 
-const ADMIN_CREDENTIALS = {
-  username: 'Ariel',
-  password: 'ariel123'
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [empleadosRegistrados, setEmpleadosRegistrados] = useState<User[]>([]);
   const [empleadosConectados, setEmpleadosConectados] = useState<User[]>([]);
 
-  // Cargar usuarios registrados del localStorage
+  // Cargar el estado inicial
   useEffect(() => {
-    const storedUsers = localStorage.getItem('empleados');
-    if (storedUsers) {
-      const users = JSON.parse(storedUsers);
-      setEmpleadosRegistrados(users.map((u: any) => ({
-        id: u.id,
-        username: u.username,
-        role: 'empleado',
-        equipoId: u.equipoId,
-        isConnected: u.isConnected
-      })));
-      // Actualizar empleados conectados
-      const connected = users.filter((u: any) => u.isConnected);
-      setEmpleadosConectados(connected.map((u: any) => ({
-        id: u.id,
-        username: u.username,
-        role: 'empleado',
-        equipoId: u.equipoId,
-        isConnected: true
-      })));
-    }
-  }, []);
+    try {
+      // Intentar recuperar la sesión del usuario
+      const savedUser = localStorage.getItem('currentUser');
+      if (savedUser) {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+      }
 
-  // Actualizar localStorage cuando cambien los empleados registrados
-  useEffect(() => {
-    if (empleadosRegistrados.length > 0) {
-      const storedUsers = localStorage.getItem('empleados');
-      const currentUsers = storedUsers ? JSON.parse(storedUsers) : [];
-      
-      // Mantener las contraseñas existentes al actualizar
-      const updatedUsers = empleadosRegistrados.map(emp => {
-        const existingUser = currentUsers.find((u: any) => u.id === emp.id);
-        return {
-          ...emp,
-          password: existingUser?.password || ''
-        };
-      });
-      
-      localStorage.setItem('empleados', JSON.stringify(updatedUsers));
-    }
-  }, [empleadosRegistrados]);
-
-  // Verificar el estado de conexión cada 30 segundos
-  useEffect(() => {
-    const interval = setInterval(() => {
+      // Cargar empleados registrados
       const storedUsers = localStorage.getItem('empleados');
       if (storedUsers) {
         const users = JSON.parse(storedUsers);
-        const connected = users.filter((u: any) => u.isConnected);
-        setEmpleadosConectados(connected.map((u: any) => ({
+        setEmpleadosRegistrados(users.map((u: any) => ({
           id: u.id,
           username: u.username,
           role: 'empleado',
           equipoId: u.equipoId,
-          isConnected: true
+          isConnected: u.isConnected
         })));
-      }
-    }, 30000); // 30 segundos
 
-    return () => clearInterval(interval);
+        const connected = users.filter((u: any) => u.isConnected);
+        setEmpleadosConectados(connected);
+      }
+    } catch (error) {
+      console.error('Error al cargar datos:', error);
+    }
   }, []);
 
   const login = async (username: string, password: string): Promise<boolean> => {
-    // Verificar si es el admin
-    if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-      const adminUser: User = {
-        id: 'admin',
-        username: ADMIN_CREDENTIALS.username,
-        role: 'admin',
-        isConnected: true
-      };
-      setUser(adminUser);
-      return true;
-    }
+    try {
+      // Verificar credenciales de admin
+      if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
+        const adminUser: User = {
+          id: 'admin',
+          username: ADMIN_CREDENTIALS.username,
+          role: 'admin',
+          isConnected: true
+        };
+        setUser(adminUser);
+        localStorage.setItem('currentUser', JSON.stringify(adminUser));
+        router.push('/dashboard');
+        return true;
+      }
 
-    // Verificar empleados registrados
-    const storedUsers = localStorage.getItem('empleados');
-    if (storedUsers) {
+      // Verificar empleados
+      const storedUsers = localStorage.getItem('empleados') || '[]';
       const users = JSON.parse(storedUsers);
       const foundUser = users.find((u: any) => 
         u.username === username && u.password === password
@@ -136,83 +107,100 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           equipoId: foundUser.equipoId,
           isConnected: true
         };
-        
-        // Actualizar estado de conexión
+
+        // Actualizar usuario en localStorage
         const updatedUsers = users.map((u: any) => 
           u.id === foundUser.id ? { ...u, isConnected: true } : u
         );
         localStorage.setItem('empleados', JSON.stringify(updatedUsers));
-        
+        localStorage.setItem('currentUser', JSON.stringify(empleadoUser));
+
         setUser(empleadoUser);
         setEmpleadosConectados(prev => [...prev.filter(u => u.id !== empleadoUser.id), empleadoUser]);
         setEmpleadosRegistrados(prev => 
           prev.map(u => u.id === empleadoUser.id ? { ...u, isConnected: true } : u)
         );
+
+        router.push('/dashboard');
         return true;
       }
-    }
 
-    return false;
+      return false;
+    } catch (error) {
+      console.error('Error en login:', error);
+      return false;
+    }
   };
 
   const logout = () => {
-    if (user && user.role === 'empleado') {
-      // Actualizar estado de conexión en localStorage
-      const storedUsers = localStorage.getItem('empleados');
-      if (storedUsers) {
-        const users = JSON.parse(storedUsers);
-        const updatedUsers = users.map((u: any) => 
-          u.id === user.id ? { ...u, isConnected: false } : u
-        );
-        localStorage.setItem('empleados', JSON.stringify(updatedUsers));
-        setEmpleadosConectados(prev => prev.filter(u => u.id !== user.id));
-        setEmpleadosRegistrados(prev => 
-          prev.map(u => u.id === user.id ? { ...u, isConnected: false } : u)
-        );
+    try {
+      if (user) {
+        if (user.role === 'empleado') {
+          const storedUsers = localStorage.getItem('empleados');
+          if (storedUsers) {
+            const users = JSON.parse(storedUsers);
+            const updatedUsers = users.map((u: any) => 
+              u.id === user.id ? { ...u, isConnected: false } : u
+            );
+            localStorage.setItem('empleados', JSON.stringify(updatedUsers));
+            setEmpleadosConectados(prev => prev.filter(u => u.id !== user.id));
+            setEmpleadosRegistrados(prev => 
+              prev.map(u => u.id === user.id ? { ...u, isConnected: false } : u)
+            );
+          }
+        }
+        localStorage.removeItem('currentUser');
+        setUser(null);
+        router.push('/auth/login');
       }
+    } catch (error) {
+      console.error('Error en logout:', error);
     }
-    setUser(null);
   };
 
   const registrarEmpleado = async (username: string, password: string): Promise<boolean> => {
-    const storedUsers = localStorage.getItem('empleados');
-    const users = storedUsers ? JSON.parse(storedUsers) : [];
+    try {
+      const storedUsers = localStorage.getItem('empleados') || '[]';
+      const users = JSON.parse(storedUsers);
 
-    // Verificar si el usuario ya existe
-    if (users.some((u: any) => u.username === username)) {
+      if (users.some((u: any) => u.username === username)) {
+        return false;
+      }
+
+      const newUser: User & { password: string } = {
+        id: Date.now().toString(),
+        username,
+        password,
+        role: 'empleado',
+        isConnected: false
+      };
+
+      users.push(newUser);
+      localStorage.setItem('empleados', JSON.stringify(users));
+      
+      const userWithoutPassword = { ...newUser };
+      delete userWithoutPassword.password;
+      setEmpleadosRegistrados(prev => [...prev, userWithoutPassword]);
+      
+      return true;
+    } catch (error) {
+      console.error('Error al registrar empleado:', error);
       return false;
     }
-
-    const newUser: User = {
-      id: Date.now().toString(),
-      username,
-      role: 'empleado',
-      isConnected: false
-    };
-
-    const newStoredUser = {
-      ...newUser,
-      password
-    };
-
-    users.push(newStoredUser);
-    localStorage.setItem('empleados', JSON.stringify(users));
-    setEmpleadosRegistrados(prev => [...prev, newUser]);
-    return true;
   };
 
   const eliminarEmpleado = (empleadoId: string) => {
-    // Obtener usuarios del localStorage
-    const storedUsers = localStorage.getItem('empleados');
-    if (storedUsers) {
-      const users = JSON.parse(storedUsers);
-      // Filtrar el usuario a eliminar
-      const updatedUsers = users.filter((u: any) => u.id !== empleadoId);
-      // Actualizar localStorage
-      localStorage.setItem('empleados', JSON.stringify(updatedUsers));
-      // Actualizar estados
-      setEmpleadosRegistrados(prev => prev.filter(u => u.id !== empleadoId));
-      setEmpleadosConectados(prev => prev.filter(u => u.id !== empleadoId));
+    try {
+      const storedUsers = localStorage.getItem('empleados');
+      if (storedUsers) {
+        const users = JSON.parse(storedUsers);
+        const updatedUsers = users.filter((u: any) => u.id !== empleadoId);
+        localStorage.setItem('empleados', JSON.stringify(updatedUsers));
+        setEmpleadosRegistrados(prev => prev.filter(u => u.id !== empleadoId));
+        setEmpleadosConectados(prev => prev.filter(u => u.id !== empleadoId));
+      }
+    } catch (error) {
+      console.error('Error al eliminar empleado:', error);
     }
   };
 
