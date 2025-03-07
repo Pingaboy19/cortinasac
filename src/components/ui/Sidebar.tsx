@@ -26,6 +26,23 @@ export default function Sidebar({ isAdmin, username, seccionActiva, onCambiarSec
     setIsCollapsed(!isCollapsed);
   };
 
+  const menuItemsAdmin = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'tareas', label: 'Gestión de Tareas', icon: '📋' },
+    { id: 'clientes', label: 'Gestión de Clientes', icon: '👥' },
+    { id: 'equipos', label: 'Gestión de Equipos', icon: '👥' },
+    { id: 'empleados', label: 'Gestión de Empleados', icon: '👨‍💼' },
+    { id: 'comisiones', label: 'Comisiones', icon: '💰' }
+  ];
+
+  const menuItemsEmpleado = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'mistareas', label: 'Mis Tareas', icon: '📋' },
+    { id: 'miequipo', label: 'Mi Equipo', icon: '👥' }
+  ];
+
+  const menuItems = isAdmin ? menuItemsAdmin : menuItemsEmpleado;
+
   return (
     <>
       {/* Botón de menú móvil */}
@@ -34,7 +51,7 @@ export default function Sidebar({ isAdmin, username, seccionActiva, onCambiarSec
         className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white shadow-lg"
       >
         <svg
-          className="w-6 h-6"
+          className="w-6 h-6 text-gray-900"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -66,116 +83,27 @@ export default function Sidebar({ isAdmin, username, seccionActiva, onCambiarSec
         <div className="flex flex-col h-full">
           <div className="p-4 border-b border-gray-200">
             <p className="text-sm text-gray-600">Bienvenido,</p>
-            <p className="font-medium">{username}</p>
+            <p className="font-medium text-gray-900">{username}</p>
           </div>
           
           <nav className="flex-1 p-4 overflow-y-auto">
-            {isAdmin ? (
-              <>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('dashboard');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'dashboard' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  📊 Dashboard
-                </button>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('tareas');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'tareas' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  📋 Gestión de Tareas
-                </button>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('clientes');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'clientes' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  👥 Gestión de Clientes
-                </button>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('equipos');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'equipos' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  👥 Gestión de Equipos
-                </button>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('empleados');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'empleados' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  👨‍💼 Gestión de Empleados
-                </button>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('comisiones');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'comisiones' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  💰 Comisiones
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('dashboard');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'dashboard' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  📊 Dashboard
-                </button>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('mistareas');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'mistareas' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  📋 Mis Tareas
-                </button>
-                <button
-                  onClick={() => {
-                    onCambiarSeccion('miequipo');
-                    setIsCollapsed(true);
-                  }}
-                  className={`w-full text-left mb-2 p-2 rounded flex items-center ${
-                    seccionActiva === 'miequipo' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  👥 Mi Equipo
-                </button>
-              </>
-            )}
+            {menuItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  onCambiarSeccion(item.id);
+                  setIsCollapsed(true);
+                }}
+                className={`w-full text-left mb-2 p-2 rounded flex items-center ${
+                  seccionActiva === item.id 
+                    ? 'bg-blue-50 text-blue-600' 
+                    : 'text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <span className="mr-2">{item.icon}</span>
+                <span className="font-medium">{item.label}</span>
+              </button>
+            ))}
           </nav>
 
           <div className="p-4 border-t border-gray-200">
@@ -186,7 +114,8 @@ export default function Sidebar({ isAdmin, username, seccionActiva, onCambiarSec
               }}
               className="w-full text-left p-2 text-red-600 hover:bg-red-50 rounded flex items-center"
             >
-              🚪 Cerrar Sesión
+              <span className="mr-2">🚪</span>
+              <span className="font-medium">Cerrar Sesión</span>
             </button>
           </div>
         </div>

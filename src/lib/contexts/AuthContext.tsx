@@ -3,19 +3,15 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
-export interface User {
+interface User {
   id: string;
   username: string;
   role: 'admin' | 'empleado';
   equipoId?: string;
-  isConnected?: boolean;
+  isConnected: boolean;
 }
 
-interface UserWithPassword extends User {
-  password: string;
-}
-
-export interface AuthContextType {
+interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
@@ -24,7 +20,7 @@ export interface AuthContextType {
   registrarEmpleado: (username: string, password: string) => Promise<boolean>;
   empleadosRegistrados: User[];
   empleadosConectados: User[];
-  eliminarEmpleado: (empleadoId: string) => void;
+  eliminarEmpleado: (id: string) => void;
 }
 
 const ADMIN_CREDENTIALS = {
@@ -49,34 +45,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [empleadosRegistrados, setEmpleadosRegistrados] = useState<User[]>([]);
   const [empleadosConectados, setEmpleadosConectados] = useState<User[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Cargar el estado inicial
+  // Cargar estado inicial
   useEffect(() => {
     try {
-      // Intentar recuperar la sesión del usuario
-      const savedUser = localStorage.getItem('currentUser');
-      if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
+      // Cargar empleados registrados
+      const storedEmpleados = localStorage.getItem('empleados');
+      if (storedEmpleados) {
+        setEmpleadosRegistrados(JSON.parse(storedEmpleados));
       }
 
-      // Cargar empleados registrados
-      const storedUsers = localStorage.getItem('empleados');
-      if (storedUsers) {
-        const users = JSON.parse(storedUsers);
-        setEmpleadosRegistrados(users.map((u: any) => ({
-          id: u.id,
-          username: u.username,
-          role: 'empleado',
-          equipoId: u.equipoId,
-          isConnected: u.isConnected
-        })));
-
-        const connected = users.filter((u: any) => u.isConnected);
-        setEmpleadosConectados(connected);
+      // Intentar restaurar la sesión
+      const storedUser = localStorage.getItem('currentUser');
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        setIsAuthenticated(true);
+        
+        // Si es un empleado, actualizar su estado de conexión
+        if (parsedUser.role === 'empleado') {
+          const updatedEmpleados = JSON.parse(storedEmpleados || '[]').map((emp: User) =>
+            emp.id === parsedUser.id ? { ...emp, isConnected: true } : emp
+          );
+          localStorage.setItem('empleados', JSON.stringify(updatedEmpleados));
+          setEmpleadosRegistrados(updatedEmpleados);
+          setEmpleadosConectados(prev => [...prev.filter(u => u.id !== parsedUser.id), parsedUser]);
+        }
       }
     } catch (error) {
-      console.error('Error al cargar datos:', error);
+      console.error('Error al cargar el estado inicial:', error);
     }
   }, []);
 
@@ -91,8 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isConnected: true
         };
         setUser(adminUser);
+        setIsAuthenticated(true);
         localStorage.setItem('currentUser', JSON.stringify(adminUser));
-        router.push('/dashboard');
         return true;
       }
 
@@ -120,12 +118,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('currentUser', JSON.stringify(empleadoUser));
 
         setUser(empleadoUser);
+        setIsAuthenticated(true);
+        setEmpleadosRegistrados(updatedUsers);
         setEmpleadosConectados(prev => [...prev.filter(u => u.id !== empleadoUser.id), empleadoUser]);
-        setEmpleadosRegistrados(prev => 
-          prev.map(u => u.id === empleadoUser.id ? { ...u, isConnected: true } : u)
-        );
 
-        router.push('/dashboard');
         return true;
       }
 
@@ -140,21 +136,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (user) {
         if (user.role === 'empleado') {
-          const storedUsers = localStorage.getItem('empleados');
-          if (storedUsers) {
-            const users = JSON.parse(storedUsers);
-            const updatedUsers = users.map((u: any) => 
-              u.id === user.id ? { ...u, isConnected: false } : u
-            );
-            localStorage.setItem('empleados', JSON.stringify(updatedUsers));
-            setEmpleadosConectados(prev => prev.filter(u => u.id !== user.id));
-            setEmpleadosRegistrados(prev => 
-              prev.map(u => u.id === user.id ? { ...u, isConnected: false } : u)
-            );
-          }
+          // Actualizar estado de conexión del empleado
+          const updatedEmpleados = empleadosRegistrados.map(emp =>
+            emp.id === user.id ? { ...emp, isConnected: false } : emp
+          );
+          localStorage.setItem('empleados', JSON.stringify(updatedEmpleados));
+          setEmpleadosRegistrados(updatedEmpleados);
+          setEmpleadosConectados(prev => prev.filter(u => u.id !== user.id));
         }
+        
+        // Limpiar sesión
         localStorage.removeItem('currentUser');
         setUser(null);
+        setIsAuthenticated(false);
         router.push('/auth/login');
       }
     } catch (error) {
@@ -164,34 +158,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registrarEmpleado = async (username: string, password: string): Promise<boolean> => {
     try {
-      const storedUsers = localStorage.getItem('empleados') || '[]';
-      const users = JSON.parse(storedUsers);
-
-      if (users.some((u: any) => u.username === username)) {
-        return false;
-      }
-
-      const newUser: UserWithPassword = {
-        id: Date.now().toString(),
+      const nuevoEmpleado: User = {
+        id: `empleado_${Date.now()}`,
         username,
-        password,
         role: 'empleado',
         isConnected: false
       };
 
-      users.push(newUser);
-      localStorage.setItem('empleados', JSON.stringify(users));
-      
-      // Crear una versión del usuario sin contraseña para el estado
-      const userForState: User = {
-        id: newUser.id,
-        username: newUser.username,
-        role: newUser.role,
-        isConnected: newUser.isConnected
+      const empleadoConPassword = {
+        ...nuevoEmpleado,
+        password
       };
-      
-      setEmpleadosRegistrados(prev => [...prev, userForState]);
-      
+
+      const updatedEmpleados = [...empleadosRegistrados, empleadoConPassword];
+      localStorage.setItem('empleados', JSON.stringify(updatedEmpleados));
+      setEmpleadosRegistrados(updatedEmpleados);
+
       return true;
     } catch (error) {
       console.error('Error al registrar empleado:', error);
@@ -199,16 +181,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const eliminarEmpleado = (empleadoId: string) => {
+  const eliminarEmpleado = (id: string) => {
     try {
-      const storedUsers = localStorage.getItem('empleados');
-      if (storedUsers) {
-        const users = JSON.parse(storedUsers);
-        const updatedUsers = users.filter((u: any) => u.id !== empleadoId);
-        localStorage.setItem('empleados', JSON.stringify(updatedUsers));
-        setEmpleadosRegistrados(prev => prev.filter(u => u.id !== empleadoId));
-        setEmpleadosConectados(prev => prev.filter(u => u.id !== empleadoId));
-      }
+      const updatedEmpleados = empleadosRegistrados.filter(emp => emp.id !== id);
+      localStorage.setItem('empleados', JSON.stringify(updatedEmpleados));
+      setEmpleadosRegistrados(updatedEmpleados);
+      setEmpleadosConectados(prev => prev.filter(u => u.id !== id));
     } catch (error) {
       console.error('Error al eliminar empleado:', error);
     }
@@ -219,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       login,
       logout,
-      isAuthenticated: !!user,
+      isAuthenticated,
       isAdmin: user?.role === 'admin',
       registrarEmpleado,
       empleadosRegistrados,
