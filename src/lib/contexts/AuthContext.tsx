@@ -11,6 +11,10 @@ export interface User {
   isConnected?: boolean;
 }
 
+interface UserWithPassword extends User {
+  password: string;
+}
+
 export interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<boolean>;
@@ -167,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      const newUser: User & { password: string } = {
+      const newUser: UserWithPassword = {
         id: Date.now().toString(),
         username,
         password,
@@ -178,9 +182,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       users.push(newUser);
       localStorage.setItem('empleados', JSON.stringify(users));
       
-      const userWithoutPassword = { ...newUser };
-      delete userWithoutPassword.password;
-      setEmpleadosRegistrados(prev => [...prev, userWithoutPassword]);
+      // Crear una versión del usuario sin contraseña para el estado
+      const userForState: User = {
+        id: newUser.id,
+        username: newUser.username,
+        role: newUser.role,
+        isConnected: newUser.isConnected
+      };
+      
+      setEmpleadosRegistrados(prev => [...prev, userForState]);
       
       return true;
     } catch (error) {
