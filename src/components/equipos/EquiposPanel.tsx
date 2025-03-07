@@ -20,7 +20,6 @@ export default function EquiposPanel() {
     nombre: '',
     members: [] as string[]
   });
-  const [equipoSeleccionado, setEquipoSeleccionado] = useState<string | null>(null);
 
   const handleSubmitEquipo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,14 +29,12 @@ export default function EquiposPanel() {
   };
 
   const handleAsignarEquipo = (empleadoId: string, equipoId: string) => {
-    // Primero remover del equipo actual si existe
     equipos.forEach(equipo => {
       if (equipo.members.includes(empleadoId)) {
         removerMiembroEquipo(equipo.id, empleadoId);
       }
     });
     
-    // Luego agregar al nuevo equipo
     if (equipoId) {
       agregarMiembroEquipo(equipoId, empleadoId);
     }
@@ -46,7 +43,6 @@ export default function EquiposPanel() {
   const handleDisolverEquipo = (equipoId: string) => {
     const confirmar = window.confirm('¿Estás seguro de que deseas disolver este equipo? Todos los miembros quedarán sin equipo.');
     if (confirmar) {
-      // Remover todos los miembros antes de eliminar
       const equipo = equipos.find(eq => eq.id === equipoId);
       if (equipo) {
         equipo.members.forEach(empleadoId => {
@@ -72,7 +68,6 @@ export default function EquiposPanel() {
         </button>
       </div>
 
-      {/* Mostrar todos los empleados */}
       <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
         <h3 className="text-lg font-semibold mb-4">Empleados</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -120,7 +115,6 @@ export default function EquiposPanel() {
         </div>
       </div>
 
-      {/* Modal de nuevo equipo */}
       {mostrarFormularioEquipo && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
@@ -172,7 +166,6 @@ export default function EquiposPanel() {
         </div>
       )}
 
-      {/* Lista de equipos */}
       <div className="grid gap-6">
         {equipos.map((equipo) => (
           <div

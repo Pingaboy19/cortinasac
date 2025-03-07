@@ -41,6 +41,10 @@ export interface CRMContextType {
   agregarCliente: (cliente: Omit<Cliente, 'id'>) => void;
   agregarTarea: (tarea: Omit<Tarea, 'id'>) => void;
   buscarClientePorNombre: (nombre: string) => Cliente[];
+  agregarEquipo: (equipo: Omit<Equipo, 'id'>) => void;
+  agregarMiembroEquipo: (equipoId: string, empleadoId: string) => void;
+  removerMiembroEquipo: (equipoId: string, empleadoId: string) => void;
+  eliminarEquipo: (equipoId: string) => void;
 }
 
 const CRMContext = createContext<CRMContextType>({
@@ -50,7 +54,11 @@ const CRMContext = createContext<CRMContextType>({
   empleados: [],
   agregarCliente: () => {},
   agregarTarea: () => {},
-  buscarClientePorNombre: () => []
+  buscarClientePorNombre: () => [],
+  agregarEquipo: () => {},
+  agregarMiembroEquipo: () => {},
+  removerMiembroEquipo: () => {},
+  eliminarEquipo: () => {}
 });
 
 export function useCRM() {
@@ -78,16 +86,16 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     }
   ]);
 
-  const [equipos] = useState<Equipo[]>([
+  const [equipos, setEquipos] = useState<Equipo[]>([
     {
       id: '1',
       nombre: 'Equipo A',
-      members: ['1', '2', '3']
+      members: ['1', '2']
     },
     {
       id: '2',
       nombre: 'Equipo B',
-      members: ['4', '5', '6']
+      members: []
     }
   ]);
 
@@ -151,6 +159,42 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  const agregarEquipo = (equipo: Omit<Equipo, 'id'>) => {
+    const nuevoEquipo = {
+      ...equipo,
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    setEquipos(prev => [...prev, nuevoEquipo]);
+  };
+
+  const agregarMiembroEquipo = (equipoId: string, empleadoId: string) => {
+    setEquipos(prev => prev.map(equipo => {
+      if (equipo.id === equipoId && !equipo.members.includes(empleadoId)) {
+        return {
+          ...equipo,
+          members: [...equipo.members, empleadoId]
+        };
+      }
+      return equipo;
+    }));
+  };
+
+  const removerMiembroEquipo = (equipoId: string, empleadoId: string) => {
+    setEquipos(prev => prev.map(equipo => {
+      if (equipo.id === equipoId) {
+        return {
+          ...equipo,
+          members: equipo.members.filter(id => id !== empleadoId)
+        };
+      }
+      return equipo;
+    }));
+  };
+
+  const eliminarEquipo = (equipoId: string) => {
+    setEquipos(prev => prev.filter(equipo => equipo.id !== equipoId));
+  };
+
   return (
     <CRMContext.Provider value={{
       equipos,
@@ -159,7 +203,11 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       empleados,
       agregarCliente,
       agregarTarea,
-      buscarClientePorNombre
+      buscarClientePorNombre,
+      agregarEquipo,
+      agregarMiembroEquipo,
+      removerMiembroEquipo,
+      eliminarEquipo
     }}>
       {children}
     </CRMContext.Provider>
