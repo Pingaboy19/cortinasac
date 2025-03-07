@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useCRM } from '@/lib/contexts/CRMContext';
 import TareasPanel from '@/components/tareas/TareasPanel';
 import Sidebar from '@/components/ui/Sidebar';
 
