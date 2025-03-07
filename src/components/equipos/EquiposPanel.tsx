@@ -198,7 +198,7 @@ export default function EquiposPanel() {
                     required
                     value={nuevoEquipo.nombre}
                     onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, nombre: e.target.value })}
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                     placeholder="Nombre del equipo"
                   />
                 </div>
@@ -249,17 +249,10 @@ export default function EquiposPanel() {
                   className="w-4 h-4 rounded-full"
                   style={{ backgroundColor: equipo.color }}
                 ></span>
-                <h3 className="text-lg font-semibold">{equipo.nombre}</h3>
+                <h3 className="text-lg font-semibold text-gray-900">{equipo.nombre}</h3>
               </div>
               <button
-                onClick={() => {
-                  const confirmar = window.confirm(
-                    '¿Estás seguro de que deseas eliminar este equipo? Todas las tareas asociadas serán marcadas como vencidas.'
-                  );
-                  if (confirmar) {
-                    eliminarEquipo(equipo.id);
-                  }
-                }}
+                onClick={() => eliminarEquipo(equipo.id)}
                 className="text-red-600 hover:text-red-800"
               >
                 Eliminar
@@ -270,7 +263,7 @@ export default function EquiposPanel() {
             <div className="space-y-4">
               <div className="flex items-center gap-4">
                 <select
-                  className="flex-1 p-2 border rounded-lg"
+                  className="flex-1 p-2 border rounded-lg text-gray-900 bg-white"
                   onChange={(e) => {
                     if (e.target.value) {
                       handleMoverEmpleado(e.target.value, equipo.id);
@@ -300,7 +293,7 @@ export default function EquiposPanel() {
                       key={memberId}
                       className="flex justify-between items-center p-2 bg-gray-50 rounded-lg"
                     >
-                      <span>{empleado.username}</span>
+                      <span className="text-gray-900">{empleado.username}</span>
                       <button
                         onClick={() => removerMiembroEquipo(equipo.id, memberId)}
                         className="text-red-600 hover:text-red-800 text-sm"
@@ -310,10 +303,16 @@ export default function EquiposPanel() {
                     </div>
                   );
                 })}
+                {equipo.members.length === 0 && (
+                  <p className="text-gray-500 text-sm">No hay miembros en este equipo</p>
+                )}
               </div>
             </div>
           </div>
         ))}
+        {equipos.length === 0 && (
+          <p className="text-gray-500 text-center py-8">No hay equipos creados</p>
+        )}
       </div>
     </div>
   );
