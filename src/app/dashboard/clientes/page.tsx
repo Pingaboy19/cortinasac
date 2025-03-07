@@ -26,9 +26,10 @@ export default function ClientesPage() {
     <div className="flex h-screen bg-gray-100">
       <Sidebar 
         isAdmin={user.role === 'admin'}
-        username={user.username || ''}
-        seccionActiva="clientes"
+        username={user.username}
+        seccionActiva={seccionActiva}
         onCambiarSeccion={(seccion) => {
+          setSeccionActiva(seccion);
           router.push(`/dashboard/${seccion}`);
         }}
       />
