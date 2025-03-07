@@ -20,6 +20,13 @@ export interface Tarea {
   comision?: number;
 }
 
+export interface Empleado {
+  id: string;
+  nombre: string;
+  role: 'admin' | 'empleado';
+  equipoId?: string;
+}
+
 export interface Equipo {
   id: string;
   nombre: string;
@@ -30,6 +37,7 @@ export interface CRMContextType {
   equipos: Equipo[];
   clientes: Cliente[];
   tareas: Tarea[];
+  empleados: Empleado[];
   agregarCliente: (cliente: Omit<Cliente, 'id'>) => void;
   agregarTarea: (tarea: Omit<Tarea, 'id'>) => void;
   buscarClientePorNombre: (nombre: string) => Cliente[];
@@ -39,6 +47,7 @@ const CRMContext = createContext<CRMContextType>({
   equipos: [],
   clientes: [],
   tareas: [],
+  empleados: [],
   agregarCliente: () => {},
   agregarTarea: () => {},
   buscarClientePorNombre: () => []
@@ -49,7 +58,26 @@ export function useCRM() {
 }
 
 export function CRMProvider({ children }: { children: React.ReactNode }) {
-  // Datos de ejemplo para desarrollo
+  const [empleados] = useState<Empleado[]>([
+    {
+      id: '1',
+      nombre: 'Empleado A',
+      role: 'empleado',
+      equipoId: '1'
+    },
+    {
+      id: '2',
+      nombre: 'Empleado B',
+      role: 'empleado',
+      equipoId: '1'
+    },
+    {
+      id: '3',
+      nombre: 'Admin',
+      role: 'admin'
+    }
+  ]);
+
   const [equipos] = useState<Equipo[]>([
     {
       id: '1',
@@ -128,6 +156,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       equipos,
       clientes,
       tareas,
+      empleados,
       agregarCliente,
       agregarTarea,
       buscarClientePorNombre
