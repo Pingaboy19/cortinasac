@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface SidebarProps {
@@ -87,7 +88,7 @@ export default function Sidebar({ isAdmin, username, seccionActiva, onCambiarSec
 
       <div className="p-4 mt-auto border-t border-gray-200">
         <button
-          onClick={logout}
+          onClick={() => onCambiarSeccion('logout')}
           className="w-full text-left p-2 text-red-600 hover:bg-red-50 rounded flex items-center"
         >
           📋 Cerrar Sesión
