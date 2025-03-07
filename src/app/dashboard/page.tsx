@@ -3,8 +3,6 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { useCRM } from '@/lib/contexts/CRMContext';
-import Sidebar from '@/components/navigation/Sidebar';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import EmpleadosDashboard from '@/components/empleados/EmpleadosDashboard';
 
@@ -18,16 +16,17 @@ export default function DashboardPage() {
     }
   }, [isAuthenticated, router]);
 
-  if (!user) {
+  if (!isAuthenticated) {
     return null;
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto">
-        {user.role === 'admin' ? <AdminDashboard /> : <EmpleadosDashboard />}
-      </main>
+    <div className="min-h-screen bg-gray-50">
+      {user?.role === 'admin' ? (
+        <AdminDashboard />
+      ) : (
+        <EmpleadosDashboard />
+      )}
     </div>
   );
 } 

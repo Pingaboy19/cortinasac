@@ -1,6 +1,8 @@
 'use client';
 
 import { useAuth } from '@/lib/contexts/AuthContext';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface SidebarProps {
   isAdmin: boolean;
@@ -11,90 +13,117 @@ interface SidebarProps {
 
 export default function Sidebar({ isAdmin, username, seccionActiva, onCambiarSeccion }: SidebarProps) {
   const { logout } = useAuth();
+  const router = useRouter();
+
+  const handleNavigation = (seccion: string) => {
+    onCambiarSeccion(seccion);
+  };
 
   return (
-    <aside className="w-64 bg-white border-r h-screen">
-      <div className="p-4 border-b">
-        <p className="text-sm text-gray-600">Bienvenido,</p>
-        <p className="font-semibold">{isAdmin ? `Jefe: ${username}` : username}</p>
+    <div className="w-64 bg-white shadow-lg">
+      <div className="p-6">
+        <h1 className="text-2xl font-bold text-[#E31E24]">CortinasAC</h1>
+        <p className="text-sm text-gray-600">Elegancia en tu hogar</p>
       </div>
-      <nav className="p-4">
-        <ul className="space-y-2">
-          <li>
-            <button
-              onClick={() => onCambiarSeccion('tareas')}
-              className={`w-full text-left px-4 py-2 rounded-lg flex items-center gap-2 ${
-                seccionActiva === 'tareas' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-              }`}
-            >
-              📋 {isAdmin ? 'Gestión de Tareas' : 'Mis Tareas'}
-            </button>
-          </li>
-          {isAdmin ? (
+
+      <div className="px-4 py-2">
+        <div className="flex items-center space-x-2 mb-6">
+          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+            {username[0]?.toUpperCase()}
+          </div>
+          <span className="text-sm font-medium">{username}</span>
+        </div>
+
+        <nav className="space-y-2">
+          <Link
+            href="/dashboard"
+            className={`block px-4 py-2 rounded-lg ${
+              seccionActiva === 'dashboard'
+                ? 'bg-[#E31E24] text-white'
+                : 'hover:bg-gray-100'
+            }`}
+            onClick={() => handleNavigation('dashboard')}
+          >
+            Dashboard
+          </Link>
+
+          <Link
+            href="/dashboard/clientes"
+            className={`block px-4 py-2 rounded-lg ${
+              seccionActiva === 'clientes'
+                ? 'bg-[#E31E24] text-white'
+                : 'hover:bg-gray-100'
+            }`}
+            onClick={() => handleNavigation('clientes')}
+          >
+            Clientes
+          </Link>
+
+          <Link
+            href="/dashboard/tareas"
+            className={`block px-4 py-2 rounded-lg ${
+              seccionActiva === 'tareas'
+                ? 'bg-[#E31E24] text-white'
+                : 'hover:bg-gray-100'
+            }`}
+            onClick={() => handleNavigation('tareas')}
+          >
+            Tareas
+          </Link>
+
+          {isAdmin && (
             <>
-              <li>
-                <button
-                  onClick={() => onCambiarSeccion('clientes')}
-                  className={`w-full text-left px-4 py-2 rounded-lg flex items-center gap-2 ${
-                    seccionActiva === 'clientes' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  👥 Gestión de Clientes
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => onCambiarSeccion('equipos')}
-                  className={`w-full text-left px-4 py-2 rounded-lg flex items-center gap-2 ${
-                    seccionActiva === 'equipos' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  👥 Gestión de Equipos
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => onCambiarSeccion('numerosclientes')}
-                  className={`w-full text-left px-4 py-2 rounded-lg flex items-center gap-2 ${
-                    seccionActiva === 'numerosclientes' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  📱 Números de Clientes
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => onCambiarSeccion('comisiones')}
-                  className={`w-full text-left px-4 py-2 rounded-lg flex items-center gap-2 ${
-                    seccionActiva === 'comisiones' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  💰 Comisiones de Empleados
-                </button>
-              </li>
-            </>
-          ) : (
-            <li>
-              <button
-                onClick={() => onCambiarSeccion('miequipo')}
-                className={`w-full text-left px-4 py-2 rounded-lg flex items-center gap-2 ${
-                  seccionActiva === 'miequipo' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
+              <Link
+                href="/dashboard/equipos"
+                className={`block px-4 py-2 rounded-lg ${
+                  seccionActiva === 'equipos'
+                    ? 'bg-[#E31E24] text-white'
+                    : 'hover:bg-gray-100'
                 }`}
+                onClick={() => handleNavigation('equipos')}
               >
-                👥 Mi Equipo
-              </button>
-            </li>
+                Equipos
+              </Link>
+
+              <Link
+                href="/dashboard/empleados"
+                className={`block px-4 py-2 rounded-lg ${
+                  seccionActiva === 'empleados'
+                    ? 'bg-[#E31E24] text-white'
+                    : 'hover:bg-gray-100'
+                }`}
+                onClick={() => handleNavigation('empleados')}
+              >
+                Empleados
+              </Link>
+            </>
           )}
-        </ul>
-      </nav>
-      <div className="p-4 border-t">
+
+          <Link
+            href="/dashboard/comisiones"
+            className={`block px-4 py-2 rounded-lg ${
+              seccionActiva === 'comisiones'
+                ? 'bg-[#E31E24] text-white'
+                : 'hover:bg-gray-100'
+            }`}
+            onClick={() => handleNavigation('comisiones')}
+          >
+            Comisiones
+          </Link>
+        </nav>
+      </div>
+
+      <div className="absolute bottom-0 w-64 p-4 border-t">
         <button
-          onClick={logout}
-          className="w-full px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-2"
+          onClick={() => {
+            logout();
+            router.push('/auth/login');
+          }}
+          className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
         >
-          <span>🚪 Cerrar Sesión</span>
+          Cerrar Sesión
         </button>
       </div>
-    </aside>
+    </div>
   );
 } 
