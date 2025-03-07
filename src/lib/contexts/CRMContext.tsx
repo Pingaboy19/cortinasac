@@ -2,34 +2,46 @@
 
 import React, { createContext, useContext, useState } from 'react';
 
-interface Cliente {
+export interface Cliente {
   id: string;
   nombre: string;
+  telefono?: string;
+  direccion?: string;
+  necesidades?: string;
 }
 
-interface Tarea {
+export interface Tarea {
   id: string;
   titulo: string;
   estado: 'pendiente' | 'completada' | 'vencida';
   fecha: string;
+  descripcion?: string;
+  equipoId?: string;
+  comision?: number;
 }
 
-interface Equipo {
+export interface Equipo {
   id: string;
   nombre: string;
   members: string[];
 }
 
-interface CRMContextType {
+export interface CRMContextType {
   equipos: Equipo[];
   clientes: Cliente[];
   tareas: Tarea[];
+  agregarCliente: (cliente: Omit<Cliente, 'id'>) => void;
+  agregarTarea: (tarea: Omit<Tarea, 'id'>) => void;
+  buscarClientePorNombre: (nombre: string) => Cliente[];
 }
 
 const CRMContext = createContext<CRMContextType>({
   equipos: [],
   clientes: [],
-  tareas: []
+  tareas: [],
+  agregarCliente: () => {},
+  agregarTarea: () => {},
+  buscarClientePorNombre: () => []
 });
 
 export function useCRM() {
@@ -51,37 +63,74 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     }
   ]);
 
-  const [clientes] = useState<Cliente[]>([
+  const [clientes, setClientes] = useState<Cliente[]>([
     {
       id: '1',
-      nombre: 'Cliente A'
+      nombre: 'Cliente A',
+      telefono: '123456789',
+      direccion: 'Dirección A',
+      necesidades: 'Necesidades A'
     },
     {
       id: '2',
-      nombre: 'Cliente B'
+      nombre: 'Cliente B',
+      telefono: '987654321',
+      direccion: 'Dirección B',
+      necesidades: 'Necesidades B'
     }
   ]);
 
-  const [tareas] = useState<Tarea[]>([
+  const [tareas, setTareas] = useState<Tarea[]>([
     {
       id: '1',
       titulo: 'Tarea A',
       estado: 'pendiente',
-      fecha: '2024-03-15'
+      fecha: '2024-03-15',
+      descripcion: 'Descripción A',
+      equipoId: '1',
+      comision: 1
     },
     {
       id: '2',
       titulo: 'Tarea B',
       estado: 'completada',
-      fecha: '2024-03-16'
+      fecha: '2024-03-16',
+      descripcion: 'Descripción B',
+      equipoId: '2',
+      comision: 2
     }
   ]);
+
+  const agregarCliente = (cliente: Omit<Cliente, 'id'>) => {
+    const nuevoCliente = {
+      ...cliente,
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    setClientes(prev => [...prev, nuevoCliente]);
+  };
+
+  const agregarTarea = (tarea: Omit<Tarea, 'id'>) => {
+    const nuevaTarea = {
+      ...tarea,
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    setTareas(prev => [...prev, nuevaTarea]);
+  };
+
+  const buscarClientePorNombre = (nombre: string) => {
+    return clientes.filter(cliente => 
+      cliente.nombre.toLowerCase().includes(nombre.toLowerCase())
+    );
+  };
 
   return (
     <CRMContext.Provider value={{
       equipos,
       clientes,
-      tareas
+      tareas,
+      agregarCliente,
+      agregarTarea,
+      buscarClientePorNombre
     }}>
       {children}
     </CRMContext.Provider>
