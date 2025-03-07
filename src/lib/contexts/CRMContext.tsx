@@ -1,81 +1,45 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { db } from '@/lib/firebase/firebaseConfig';
-import { collection, onSnapshot, query, QuerySnapshot, DocumentData } from 'firebase/firestore';
+import React, { createContext, useContext, useState } from 'react';
 
-interface Member {
-  id: string;
-  username: string;
-  comision: number;
-}
-
-interface Team {
+interface Equipo {
   id: string;
   nombre: string;
-  members: Member[];
-}
-
-interface Task {
-  id: string;
-  equipoId: string;
-  estado: 'pendiente' | 'completada' | 'vencida';
-  fechaVencimiento: string;
-  monto: number;
-  titulo: string;
-  descripcion: string;
+  members: string[];
 }
 
 interface CRMContextType {
-  equipos: Team[];
-  tareas: Task[];
-  actualizarEquipos: () => void;
-  actualizarTareas: () => void;
+  equipos: Equipo[];
 }
 
 const CRMContext = createContext<CRMContextType>({
   equipos: [],
-  tareas: [],
-  actualizarEquipos: () => {},
-  actualizarTareas: () => {},
 });
 
-export function CRMProvider({ children }: { children: ReactNode }) {
-  const [equipos, setEquipos] = useState<Team[]>([]);
-  const [tareas, setTareas] = useState<Task[]>([]);
+export function useCRM() {
+  return useContext(CRMContext);
+}
 
-  const actualizarEquipos = () => {
-    const q = query(collection(db, 'equipos'));
-    onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-      const equiposData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Team[];
-      setEquipos(equiposData);
-    });
-  };
-
-  const actualizarTareas = () => {
-    const q = query(collection(db, 'tareas'));
-    onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-      const tareasData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Task[];
-      setTareas(tareasData);
-    });
-  };
-
-  useEffect(() => {
-    actualizarEquipos();
-    actualizarTareas();
-  }, []);
+export function CRMProvider({ children }: { children: React.ReactNode }) {
+  // Datos de ejemplo para desarrollo
+  const [equipos] = useState<Equipo[]>([
+    {
+      id: '1',
+      nombre: 'Equipo A',
+      members: ['1', '2', '3']
+    },
+    {
+      id: '2',
+      nombre: 'Equipo B',
+      members: ['4', '5', '6']
+    }
+  ]);
 
   return (
-    <CRMContext.Provider value={{ equipos, tareas, actualizarEquipos, actualizarTareas }}>
+    <CRMContext.Provider value={{
+      equipos,
+    }}>
       {children}
     </CRMContext.Provider>
   );
-}
-
-export const useCRM = () => useContext(CRMContext); 
+} 
