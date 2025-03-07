@@ -1,15 +1,17 @@
-# Ansh & Riley Full-Stack Template
+# Plantilla full-stack de Bruno Sacco
+inspirado en [Ansh & Riley](https://github.com/ansh/fullstack-template)
 
-This is a full-stack template project for Software Composers to create  applications with AI.
+Este es un proyecto de plantilla full-stack para que los compositores de software creen aplicaciones con IA.
+Diseñado y modificado para que corra en entornos de producción de vercel 
 
-## Getting started
-To create a new project, you go to `/paths`, choose from our list of Paths, and then use Cursor's Composer feature to quickly scaffold your project!
+## Primeros pasos
+Para crear un nuevo proyecto, vaya a `/paths`, elija de nuestra lista de rutas y luego use la función Composer de Cursor para armar rápidamente su proyecto.
 
-You can also edit the Path's prompt template to be whatever you like!
+¡También puede editar la plantilla de solicitud de la ruta para que sea lo que desee!
 
-## Technologies used
-This doesn't really matter, but is useful for the AI to understand more about this project. We are using the following technologies
-- React with Next.js 14 App Router
+## Tecnologías utilizadas
+Esto realmente no importa, pero es útil para que la IA comprenda más sobre este proyecto. Estamos usando las siguientes tecnologías
+- React con Next.js 14 App Router
 - TailwindCSS
-- Firebase Auth, Storage, and Database
-- Multiple AI endpoints including OpenAI, Anthropic, and Replicate using Vercel's AI SDK
+- Firebase Auth, Storage y Database
+- Múltiples puntos finales de IA, incluidos OpenAI, Anthropic y Replicate, utilizando el SDK de IA de Vercel
