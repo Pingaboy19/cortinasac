@@ -1,10 +1,29 @@
 'use client';
 
-import { useCRM } from '@/lib/contexts/CRMContext';
+interface Equipo {
+  id: string;
+  nombre: string;
+  members: string[];
+}
+
+interface Empleado {
+  id: string;
+  nombre: string;
+  role: string;
+}
+
+const equipos: Equipo[] = [
+  { id: '1', nombre: 'Equipo A', members: ['1', '2'] },
+  { id: '2', nombre: 'Equipo B', members: [] }
+];
+
+const empleados: Empleado[] = [
+  { id: '1', nombre: 'Empleado A', role: 'empleado' },
+  { id: '2', nombre: 'Empleado B', role: 'empleado' },
+  { id: '3', nombre: 'Admin', role: 'admin' }
+];
 
 export default function EquiposPanel() {
-  const { equipos, empleados } = useCRM();
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
