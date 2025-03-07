@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useCRM } from '@/lib/contexts/CRMContext';
 import Sidebar from '@/components/ui/Sidebar';
+import Calendar from '@/components/Calendar';
 
 interface Task {
   id: string;
@@ -12,12 +13,10 @@ interface Task {
   descripcion: string;
   estado: 'pendiente' | 'completada' | 'vencida';
   fechaVencimiento: string;
-  monto: number;
   empleadoId: string;
   clienteId: string;
   cliente: {
     nombre: string;
-    direccion: string;
   };
 }
 
@@ -26,6 +25,7 @@ export default function MisTareasPage() {
   const { tareas } = useCRM();
   const router = useRouter();
   const [seccionActiva, setSeccionActiva] = useState('mistareas');
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(() => {
     if (!isAuthenticated || user?.role === 'admin') {
@@ -42,12 +42,27 @@ export default function MisTareasPage() {
     tarea.empleadoId === user.id
   );
 
-  const tareasPendientes = misTareas.filter(tarea => tarea.estado === 'pendiente');
-  const tareasCompletadas = misTareas.filter(tarea => tarea.estado === 'completada');
-  const tareasVencidas = misTareas.filter(tarea => tarea.estado === 'vencida');
+  // Agrupar tareas por fecha
+  const tareasPorFecha = misTareas.reduce((acc, tarea) => {
+    const fecha = new Date(tarea.fechaVencimiento).toISOString().split('T')[0];
+    if (!acc[fecha]) {
+      acc[fecha] = [];
+    }
+    acc[fecha].push(tarea);
+    return acc;
+  }, {} as Record<string, Task[]>);
 
-  // Calcular comisión total (1% sobre tareas completadas)
-  const comisionTotal = tareasCompletadas.reduce((total, tarea) => total + (tarea.monto * 0.01), 0);
+  // Eventos para el calendario
+  const eventos = misTareas.map(tarea => ({
+    id: tarea.id,
+    title: tarea.titulo,
+    date: new Date(tarea.fechaVencimiento).toISOString().split('T')[0],
+    className: `
+      ${tarea.estado === 'completada' ? 'bg-green-100 border-green-200 text-green-800' : 
+        tarea.estado === 'vencida' ? 'bg-red-100 border-red-200 text-red-800' : 
+        'bg-yellow-100 border-yellow-200 text-yellow-800'}
+    `
+  }));
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -62,112 +77,49 @@ export default function MisTareasPage() {
       />
       <main className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-2xl font-bold mb-6">Bienvenido, {user.username}</h1>
-          <p className="text-gray-600 mb-8">Panel de control de empleado</p>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-2">Tareas Pendientes</h3>
-              <p className="text-3xl font-bold text-red-600">{tareasPendientes.length}</p>
-              <div className="mt-2">
-                <span className="text-sm text-gray-500">Por completar</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-2">Tareas Completadas</h3>
-              <p className="text-3xl font-bold text-green-600">{tareasCompletadas.length}</p>
-              <div className="mt-2">
-                <span className="text-sm text-gray-500">Finalizadas</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-2">Tareas Vencidas</h3>
-              <p className="text-3xl font-bold text-yellow-600">{tareasVencidas.length}</p>
-              <div className="mt-2">
-                <span className="text-sm text-gray-500">Fuera de tiempo</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-2">Mi Comisión</h3>
-              <p className="text-3xl font-bold text-blue-600">1%</p>
-              <div className="mt-2">
-                <span className="text-sm text-gray-500">
-                  ${comisionTotal.toFixed(2)} UYU generados
-                </span>
-              </div>
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h1 className="text-2xl font-bold">Mis Tareas</h1>
+              <p className="text-gray-600">Calendario de tareas asignadas</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="p-6">
-              <h2 className="text-xl font-semibold mb-4">Mis Tareas Recientes</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Tarea
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Cliente
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Vencimiento
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Estado
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Monto
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Comisión (1%)
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {misTareas.map(tarea => (
-                    <tr key={tarea.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
+          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+            <Calendar 
+              events={eventos}
+              onDateSelect={(date) => setSelectedDate(date)}
+            />
+          </div>
+
+          {selectedDate && tareasPorFecha[selectedDate.toISOString().split('T')[0]] && (
+            <div className="mt-8">
+              <h2 className="text-lg font-semibold mb-4">
+                Tareas para {selectedDate.toLocaleDateString()}
+              </h2>
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="divide-y divide-gray-200">
+                  {tareasPorFecha[selectedDate.toISOString().split('T')[0]].map((tarea) => (
+                    <div key={tarea.id} className="p-4 hover:bg-gray-50">
+                      <div className="flex items-center justify-between">
                         <div>
-                          <div className="font-medium text-gray-900">{tarea.titulo}</div>
-                          <div className="text-sm text-gray-500">{tarea.descripcion}</div>
+                          <h3 className="text-lg font-medium text-gray-900">{tarea.titulo}</h3>
+                          <p className="text-sm text-gray-500">Cliente: {tarea.cliente.nombre}</p>
+                          <p className="text-sm text-gray-500">{tarea.descripcion}</p>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="font-medium text-gray-900">{tarea.cliente.nombre}</div>
-                          <div className="text-sm text-gray-500">{tarea.cliente.direccion}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {new Date(tarea.fechaVencimiento).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                           tarea.estado === 'completada' ? 'bg-green-100 text-green-800' :
                           tarea.estado === 'vencida' ? 'bg-red-100 text-red-800' :
                           'bg-yellow-100 text-yellow-800'
                         }`}>
                           {tarea.estado.charAt(0).toUpperCase() + tarea.estado.slice(1)}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        ${tarea.monto.toFixed(2)} UYU
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-green-600">
-                        ${(tarea.monto * 0.01).toFixed(2)} UYU
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </main>
     </div>
