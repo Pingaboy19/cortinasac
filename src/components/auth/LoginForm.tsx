@@ -2,40 +2,53 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function LoginForm() {
   const { login, registrarEmpleado } = useAuth();
+  const router = useRouter();
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     username: '',
     password: ''
   });
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    if (isRegistering) {
-      const success = await registrarEmpleado(formData.username, formData.password);
-      if (success) {
-        setIsRegistering(false);
-        setFormData({ username: '', password: '' });
-        alert('Empleado registrado exitosamente');
+    try {
+      if (isRegistering) {
+        const success = await registrarEmpleado(formData.username, formData.password);
+        if (success) {
+          setIsRegistering(false);
+          setFormData({ username: '', password: '' });
+          alert('Empleado registrado exitosamente');
+        } else {
+          setError('El nombre de usuario ya existe');
+        }
       } else {
-        setError('El nombre de usuario ya existe');
+        const success = await login(formData.username, formData.password);
+        if (success) {
+          router.push('/dashboard');
+        } else {
+          setError('Credenciales inválidas');
+        }
       }
-    } else {
-      const success = await login(formData.username, formData.password);
-      if (!success) {
-        setError('Credenciales inválidas');
-      }
+    } catch (error) {
+      console.error('Error:', error);
+      setError('Ocurrió un error. Por favor intenta de nuevo.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100 px-4">
+      <div className="max-w-md w-full space-y-8 p-6 sm:p-8 bg-white rounded-xl shadow-lg">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-[#E31E24] mb-2">CortinasAC</h1>
           <h2 className="mt-6 text-3xl font-bold text-gray-900">
@@ -61,6 +74,7 @@ export default function LoginForm() {
                 placeholder="Ingresa tu nombre de usuario"
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                disabled={isLoading}
               />
             </div>
             <div>
@@ -76,6 +90,7 @@ export default function LoginForm() {
                 placeholder="Ingresa tu contraseña"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -89,9 +104,22 @@ export default function LoginForm() {
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-[#E31E24] hover:bg-[#C41A1F] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E31E24] transition-colors duration-200"
+              disabled={isLoading}
+              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-[#E31E24] hover:bg-[#C41A1F] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E31E24] transition-colors duration-200 ${
+                isLoading ? 'opacity-75 cursor-not-allowed' : ''
+              }`}
             >
-              {isRegistering ? 'Registrarse' : 'Iniciar Sesión'}
+              {isLoading ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Procesando...
+                </span>
+              ) : (
+                isRegistering ? 'Registrarse' : 'Iniciar Sesión'
+              )}
             </button>
           </div>
         </form>
@@ -105,6 +133,7 @@ export default function LoginForm() {
               setFormData({ username: '', password: '' });
             }}
             className="text-sm text-[#E31E24] hover:text-[#C41A1F] font-medium transition-colors duration-200"
+            disabled={isLoading}
           >
             {isRegistering
               ? '¿Ya tienes cuenta? Inicia sesión'
@@ -112,16 +141,14 @@ export default function LoginForm() {
           </button>
         </div>
 
-        <div className="mt-6">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">
-                Elegancia en tu hogar
-              </span>
-            </div>
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-300"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">
+              Elegancia en tu hogar
+            </span>
           </div>
         </div>
       </div>
