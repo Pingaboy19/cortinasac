@@ -35,15 +35,17 @@ export default function MiEquipoPage() {
   }
 
   // Encontrar el equipo del empleado
-  const miEquipo = equipos.find(equipo => equipo.members.includes(user.id));
+  const miEquipo = equipos.find((equipo: Equipo) => 
+    equipo.members.includes(user.id)
+  );
 
-  // Obtener los detalles de los miembros del equipo
+  // Obtener información de los miembros del equipo
   const miembrosEquipo = miEquipo?.members.map(memberId => {
-    const empleado = empleadosRegistrados.find(emp => emp.id === memberId);
+    const miembro = empleadosRegistrados.find(emp => emp.id === memberId);
     return {
       id: memberId,
-      username: empleado?.username || 'Usuario no encontrado',
-      role: empleado?.role || 'empleado'
+      username: miembro?.username || 'Usuario no encontrado',
+      role: miembro?.role || 'empleado'
     };
   }) || [];
 
@@ -59,30 +61,31 @@ export default function MiEquipoPage() {
         }}
       />
       <main className="flex-1 p-8 overflow-y-auto">
-        <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">
+        <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">
             {miEquipo?.nombre || 'Mi Equipo'}
           </h1>
           
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Miembros del Equipo</h2>
+          <div className="mt-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Miembros del Equipo</h2>
             <div className="space-y-4">
               {miembrosEquipo.map((miembro) => (
                 <div 
                   key={miembro.id}
                   className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
                 >
-                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                    <span className="text-xl font-medium text-blue-600">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span className="text-blue-600 font-medium">
                       {miembro.username[0]?.toUpperCase()}
                     </span>
                   </div>
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900">
+                    <p className="text-gray-900 font-medium">
                       {miembro.username}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {miembro.id === user.id ? '(Tú)' : 'Compañero de equipo'}
+                      {miembro.id === user.id && ' (Tú)'}
+                    </p>
+                    <p className="text-gray-600 text-sm">
+                      {miembro.id === user.id ? 'Miembro del equipo (Tú)' : 'Compañero de equipo'}
                     </p>
                   </div>
                 </div>

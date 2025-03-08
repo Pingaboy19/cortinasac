@@ -4,20 +4,13 @@ import { useState } from 'react';
 import { useCRM } from '@/lib/contexts/CRMContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 
-interface Equipo {
-  id: string;
-  nombre: string;
-  members: string[];
-}
-
 export default function EquiposPanel() {
   const {
     equipos,
     agregarEquipo,
     agregarMiembroEquipo,
     removerMiembroEquipo,
-    eliminarEquipo,
-    actualizarEquipo
+    eliminarEquipo
   } = useCRM();
   const { empleadosRegistrados, empleadosConectados, eliminarEmpleado } = useAuth();
 
@@ -27,8 +20,7 @@ export default function EquiposPanel() {
     color: '#000000',
     members: [] as string[]
   });
-  const [equipoSeleccionado, setEquipoSeleccionado] = useState<Equipo | null>(null);
-  const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState('');
+  const [equipoSeleccionado, setEquipoSeleccionado] = useState<string | null>(null);
 
   const handleSubmitEquipo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,25 +90,6 @@ export default function EquiposPanel() {
     });
     // Luego, agregar al empleado al nuevo equipo
     agregarMiembroEquipo(nuevoEquipoId, empleadoId);
-  };
-
-  const handleAgregarEmpleado = (equipo: Equipo) => {
-    if (empleadoSeleccionado && !equipo.members.includes(empleadoSeleccionado)) {
-      const equipoActualizado = {
-        ...equipo,
-        members: [...equipo.members, empleadoSeleccionado]
-      };
-      actualizarEquipo(equipoActualizado);
-      setEmpleadoSeleccionado('');
-    }
-  };
-
-  const handleRemoverEmpleado = (equipo: Equipo, empleadoId: string) => {
-    const equipoActualizado = {
-      ...equipo,
-      members: equipo.members.filter(id => id !== empleadoId)
-    };
-    actualizarEquipo(equipoActualizado);
   };
 
   return (
