@@ -13,7 +13,6 @@ export default function ClientesPanel() {
     necesidades: ''
   });
   const [busqueda, setBusqueda] = useState('');
-  const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [nuevaTarea, setNuevaTarea] = useState({
     equipoId: '',
     fecha: new Date().toISOString().split('T')[0]
@@ -27,6 +26,10 @@ export default function ClientesPanel() {
     if (nuevoCliente.nombre && nuevoCliente.telefono) {
       await agregarCliente(nuevoCliente);
       setModalAbierto(false);
+      // Preparar para asignar tarea inmediatamente
+      setClienteActual(nuevoCliente.nombre);
+      setDescripcionTarea(nuevoCliente.necesidades);
+      setMostrarFormularioTarea(true);
       setNuevoCliente({ nombre: '', telefono: '', direccion: '', necesidades: '' });
     }
   };
@@ -248,7 +251,7 @@ export default function ClientesPanel() {
                     required
                     value={nuevaTarea.equipoId}
                     onChange={(e) => setNuevaTarea({ ...nuevaTarea, equipoId: e.target.value })}
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Seleccionar equipo...</option>
                     {equipos.map((equipo) => (
@@ -267,7 +270,7 @@ export default function ClientesPanel() {
                     required
                     value={nuevaTarea.fecha}
                     onChange={(e) => setNuevaTarea({ ...nuevaTarea, fecha: e.target.value })}
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div className="flex justify-end gap-3 mt-6">
