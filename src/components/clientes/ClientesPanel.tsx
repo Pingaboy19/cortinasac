@@ -85,7 +85,7 @@ export default function ClientesPanel() {
           placeholder="Buscar cliente por nombre..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          className="w-full p-3 border rounded-lg mb-6"
+          className="w-full p-3 border rounded-lg mb-6 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
 
         {/* Modal de nuevo cliente */}
@@ -97,11 +97,9 @@ export default function ClientesPanel() {
                   <h3 className="text-xl font-semibold text-gray-900">Nuevo Cliente</h3>
                   <button
                     onClick={() => setMostrarFormulario(false)}
-                    className="text-gray-400 hover:text-gray-500"
+                    className="text-gray-500 hover:text-gray-700"
                   >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    ×
                   </button>
                 </div>
 
@@ -115,7 +113,7 @@ export default function ClientesPanel() {
                       required
                       value={nuevoCliente.nombre}
                       onChange={(e) => setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })}
-                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                       placeholder="Nombre completo"
                     />
                   </div>
@@ -128,7 +126,7 @@ export default function ClientesPanel() {
                       required
                       value={nuevoCliente.telefono}
                       onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })}
-                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                       placeholder="Número de teléfono"
                     />
                   </div>
@@ -140,7 +138,7 @@ export default function ClientesPanel() {
                       type="text"
                       value={nuevoCliente.direccion}
                       onChange={(e) => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })}
-                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                       placeholder="Dirección (opcional)"
                     />
                   </div>
@@ -151,22 +149,22 @@ export default function ClientesPanel() {
                     <textarea
                       value={nuevoCliente.necesidades}
                       onChange={(e) => setNuevoCliente({ ...nuevoCliente, necesidades: e.target.value })}
-                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                      rows={3}
-                      placeholder="Necesidades específicas (opcional)"
+                      className="w-full p-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                      rows={4}
+                      placeholder="Descripción de necesidades (opcional)"
                     />
                   </div>
                   <div className="flex justify-end gap-3 mt-6">
                     <button
                       type="button"
                       onClick={() => setMostrarFormulario(false)}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                      className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors duration-200"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                      className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
                     >
                       Guardar Cliente
                     </button>
@@ -191,11 +189,9 @@ export default function ClientesPanel() {
                       setMostrarFormularioTarea(false);
                       setClienteActual(null);
                     }}
-                    className="text-gray-400 hover:text-gray-500"
+                    className="text-gray-500 hover:text-gray-700"
                   >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    ×
                   </button>
                 </div>
 
@@ -208,7 +204,7 @@ export default function ClientesPanel() {
                       required
                       value={nuevaTarea.equipoId}
                       onChange={(e) => setNuevaTarea({ ...nuevaTarea, equipoId: e.target.value })}
-                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Seleccionar equipo...</option>
                       {equipos.map((equipo) => (
@@ -227,7 +223,7 @@ export default function ClientesPanel() {
                       required
                       value={nuevaTarea.fecha}
                       onChange={(e) => setNuevaTarea({ ...nuevaTarea, fecha: e.target.value })}
-                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div className="flex justify-end gap-3 mt-6">
@@ -237,13 +233,13 @@ export default function ClientesPanel() {
                         setMostrarFormularioTarea(false);
                         setClienteActual(null);
                       }}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                      className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors duration-200"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                      className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
                     >
                       Asignar Tarea
                     </button>
