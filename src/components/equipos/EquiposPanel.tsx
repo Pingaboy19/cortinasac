@@ -275,7 +275,7 @@ export default function EquiposPanel() {
                   {empleadosRegistrados
                     .filter(emp => !equipos.some(eq => eq.members.includes(emp.id)))
                     .map((empleado) => (
-                      <option key={empleado.id} value={empleado.id}>
+                      <option key={empleado.id} value={empleado.id} className="text-gray-900">
                         {empleado.username}
                       </option>
                     ))}

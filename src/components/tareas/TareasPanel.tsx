@@ -262,7 +262,7 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                   value={observacion}
                   onChange={(e) => setObservacion(e.target.value)}
                   placeholder="Agregar observación..."
-                  className="flex-1 px-3 py-1 border rounded-md"
+                  className="flex-1 px-3 py-1 border rounded-md text-gray-900 bg-white"
                 />
                 <button
                   onClick={() => handleAgregarObservacion(tarea.id)}
@@ -295,7 +295,7 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                           ...prev,
                           [tarea.id]: parseInt(e.target.value)
                         }))}
-                        className="w-full px-3 py-2 border rounded-md"
+                        className="w-full px-3 py-2 border rounded-md text-gray-900 bg-white"
                         placeholder="Ingrese el monto"
                       />
                     </div>
@@ -309,7 +309,7 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                           ...prev,
                           [tarea.id]: e.target.value
                         }))}
-                        className="w-full px-3 py-2 border rounded-md"
+                        className="w-full px-3 py-2 border rounded-md text-gray-900 bg-white"
                       >
                         <option value="">Seleccionar método...</option>
                         <option value="efectivo">Efectivo</option>
@@ -350,7 +350,7 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
               <select
                 value={filtroEstado}
                 onChange={(e) => setFiltroEstado(e.target.value)}
-                className="border rounded-lg px-3 py-2"
+                className="border rounded-lg px-3 py-2 text-gray-900 bg-white"
               >
                 <option value="todos">Todos los estados</option>
                 <option value="pendiente">Pendientes</option>
@@ -363,7 +363,7 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                 <select
                   value={filtroEquipo}
                   onChange={(e) => setFiltroEquipo(e.target.value)}
-                  className="border rounded-lg px-3 py-2"
+                  className="border rounded-lg px-3 py-2 text-gray-900 bg-white"
                 >
                   <option value="">Todos los equipos</option>
                   {equipos.map((equipo) => (
@@ -402,9 +402,9 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                   →
                 </button>
               </div>
-              <div className="grid grid-cols-7 gap-1 min-w-[300px]">
-                {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(dia => (
-                  <div key={dia} className="text-center p-1 sm:p-2 text-xs sm:text-sm font-medium text-gray-600">
+              <div className="grid grid-cols-7 gap-1 mb-4">
+                {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((dia, index) => (
+                  <div key={index} className="text-center font-medium text-gray-900 p-2">
                     {dia}
                   </div>
                 ))}
@@ -422,40 +422,33 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                   return (
                     <div
                       key={fechaStr}
-                      className={`p-1 sm:p-2 min-h-[60px] sm:min-h-[100px] border rounded ${
-                        esFechaActual ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
-                      }`}
+                      className={`border rounded p-2 text-center cursor-pointer hover:bg-gray-50 ${
+                        esFechaActual ? 'bg-blue-100' : ''
+                      } ${!fecha.getDate() ? 'opacity-50' : ''}`}
+                      onClick={() => setFechaSeleccionada(fecha)}
                     >
-                      <div className="text-xs sm:text-sm font-medium mb-1">{fecha.getDate()}</div>
-                      <div className="space-y-1">
-                        {tareasDelDia.map(tarea => {
-                          const equipo = equipos.find(eq => eq.id === tarea.equipoId);
-                          return (
-                            <div
-                              key={tarea.id}
-                              className={`text-[10px] sm:text-xs p-1 rounded cursor-pointer transition-colors ${
-                                tarea.estado === 'completada'
-                                  ? 'bg-green-100 text-green-800'
-                                  : tarea.estado === 'vencida'
-                                  ? 'bg-red-100 text-red-800'
-                                  : 'bg-yellow-100 text-yellow-800'
-                              }`}
-                              onClick={() => {
-                                if (!isAdmin && tarea.estado === 'pendiente') {
-                                  const confirmar = window.confirm('¿Deseas marcar esta tarea como completada?');
-                                  if (confirmar) {
-                                    handleCompletarTarea(tarea.id);
-                                  }
-                                }
-                              }}
-                              title={`${tarea.titulo} - ${equipo?.nombre || 'Sin equipo'} - Comisión: ${tarea.comision}%`}
-                            >
-                              <div className="font-medium truncate">{tarea.titulo}</div>
-                              <div className="text-[8px] sm:text-xs opacity-75 truncate">{equipo?.nombre}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <div className="text-gray-900">{fecha.getDate()}</div>
+                      {tareasDelDia.map(tarea => {
+                        const equipo = equipos.find(eq => eq.id === tarea.equipoId);
+                        return (
+                          <div
+                            key={tarea.id}
+                            className={`text-xs p-1 mt-1 rounded truncate ${
+                              tarea.estado === 'completada'
+                                ? 'bg-green-100 text-green-800'
+                                : tarea.estado === 'vencida'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}
+                            style={{
+                              backgroundColor: equipo?.color || 'transparent',
+                              color: 'black'
+                            }}
+                          >
+                            {tarea.titulo.substring(0, 3)}...
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -528,7 +521,7 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
               <input
                 type="number"
                 min="0"
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-3 py-2 border rounded-md text-gray-900 bg-white"
                 placeholder="Ingrese el monto"
                 value={montoCobrado[tareaSeleccionada] || ''}
                 onChange={(e) => setMontoCobrado(prev => ({
@@ -542,7 +535,7 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                 Método de pago
               </label>
               <select
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-3 py-2 border rounded-md text-gray-900 bg-white"
                 value={metodoPago[tareaSeleccionada] || ''}
                 onChange={(e) => setMetodoPago(prev => ({
                   ...prev,
