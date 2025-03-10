@@ -9,6 +9,8 @@ interface User {
   role: 'admin' | 'empleado';
   equipoId?: string;
   isConnected: boolean;
+  lastLogin?: string;
+  createdAt: string;
 }
 
 interface AuthContextType {
@@ -40,41 +42,38 @@ export const AuthContext = createContext<AuthContextType>({
   eliminarEmpleado: () => {}
 });
 
+export const useAuth = () => useContext(AuthContext);
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [empleadosRegistrados, setEmpleadosRegistrados] = useState<User[]>([]);
   const [empleadosConectados, setEmpleadosConectados] = useState<User[]>([]);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Cargar estado inicial
   useEffect(() => {
     try {
-      // Cargar empleados registrados
-      const storedEmpleados = localStorage.getItem('empleados');
-      if (storedEmpleados) {
-        setEmpleadosRegistrados(JSON.parse(storedEmpleados));
-      }
-
-      // Intentar restaurar la sesión
-      const storedUser = localStorage.getItem('currentUser');
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
+      const currentUser = localStorage.getItem('currentUser');
+      const empleados = localStorage.getItem('empleados');
+      
+      if (currentUser) {
+        const userData = JSON.parse(currentUser);
+        setUser(userData);
         setIsAuthenticated(true);
-        
-        // Si es un empleado, actualizar su estado de conexión
-        if (parsedUser.role === 'empleado') {
-          const updatedEmpleados = JSON.parse(storedEmpleados || '[]').map((emp: User) =>
-            emp.id === parsedUser.id ? { ...emp, isConnected: true } : emp
-          );
-          localStorage.setItem('empleados', JSON.stringify(updatedEmpleados));
-          setEmpleadosRegistrados(updatedEmpleados);
-          setEmpleadosConectados(prev => [...prev.filter(u => u.id !== parsedUser.id), parsedUser]);
-        }
+      }
+      
+      if (empleados) {
+        const empleadosData = JSON.parse(empleados);
+        setEmpleadosRegistrados(empleadosData);
+        const conectados = empleadosData.filter((emp: User) => emp.isConnected);
+        setEmpleadosConectados(conectados);
       }
     } catch (error) {
-      console.error('Error al cargar el estado inicial:', error);
+      console.error('Error al cargar datos:', error);
+      // Limpiar datos corruptos
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('empleados');
     }
   }, []);
 
@@ -86,7 +85,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: 'admin',
           username: ADMIN_CREDENTIALS.username,
           role: 'admin',
-          isConnected: true
+          isConnected: true,
+          createdAt: new Date().toISOString()
         };
         setUser(adminUser);
         setIsAuthenticated(true);
@@ -107,12 +107,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           username: foundUser.username,
           role: 'empleado',
           equipoId: foundUser.equipoId,
-          isConnected: true
+          isConnected: true,
+          lastLogin: new Date().toISOString(),
+          createdAt: foundUser.createdAt
         };
 
         // Actualizar usuario en localStorage
         const updatedUsers = users.map((u: any) => 
-          u.id === foundUser.id ? { ...u, isConnected: true } : u
+          u.id === foundUser.id 
+            ? { ...u, isConnected: true, lastLogin: empleadoUser.lastLogin }
+            : u
         );
         localStorage.setItem('empleados', JSON.stringify(updatedUsers));
         localStorage.setItem('currentUser', JSON.stringify(empleadoUser));
@@ -158,11 +162,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registrarEmpleado = async (username: string, password: string): Promise<boolean> => {
     try {
+      // Verificar si el usuario ya existe
+      const empleadoExistente = empleadosRegistrados.find(emp => emp.username === username);
+      if (empleadoExistente) {
+        return false;
+      }
+
       const nuevoEmpleado: User = {
         id: `empleado_${Date.now()}`,
         username,
         role: 'empleado',
-        isConnected: false
+        isConnected: false,
+        createdAt: new Date().toISOString()
       };
 
       const empleadoConPassword = {
@@ -207,12 +218,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
-  }
-  return context;
 }
