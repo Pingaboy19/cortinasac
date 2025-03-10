@@ -50,32 +50,163 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [empleadosRegistrados, setEmpleadosRegistrados] = useState<User[]>([]);
   const [empleadosConectados, setEmpleadosConectados] = useState<User[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Función para guardar datos con respaldo
+  const saveToStorage = (key: string, data: any) => {
+    try {
+      // Crear una copia de seguridad antes de sobrescribir
+      const existingData = localStorage.getItem(key);
+      if (existingData) {
+        localStorage.setItem(`${key}_backup`, existingData);
+      }
+      
+      // Guardar los nuevos datos
+      localStorage.setItem(key, JSON.stringify(data));
+      
+      // Guardar timestamp de la última actualización
+      localStorage.setItem(`${key}_lastUpdate`, new Date().toISOString());
+      
+      return true;
+    } catch (error) {
+      console.error(`Error al guardar ${key}:`, error);
+      
+      // Intentar guardar en formato más pequeño si es un error de cuota
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        try {
+          // Eliminar backups antiguos para liberar espacio
+          localStorage.removeItem(`${key}_backup`);
+          localStorage.setItem(key, JSON.stringify(data));
+          return true;
+        } catch (e) {
+          console.error(`Error al guardar ${key} después de liberar espacio:`, e);
+          return false;
+        }
+      }
+      
+      return false;
+    }
+  };
+
+  // Función para cargar datos con manejo de errores
+  const loadFromStorage = (key: string) => {
+    try {
+      const data = localStorage.getItem(key);
+      
+      if (data) {
+        return JSON.parse(data);
+      }
+      
+      // Si no hay datos, intentar cargar desde la copia de seguridad
+      const backup = localStorage.getItem(`${key}_backup`);
+      if (backup) {
+        console.warn(`Cargando ${key} desde copia de seguridad`);
+        return JSON.parse(backup);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Error al cargar ${key}:`, error);
+      
+      // Intentar cargar desde la copia de seguridad
+      try {
+        const backup = localStorage.getItem(`${key}_backup`);
+        if (backup) {
+          console.warn(`Cargando ${key} desde copia de seguridad después de error`);
+          return JSON.parse(backup);
+        }
+      } catch (e) {
+        console.error(`Error al cargar copia de seguridad de ${key}:`, e);
+      }
+      
+      return null;
+    }
+  };
 
   // Cargar estado inicial
   useEffect(() => {
     try {
-      const currentUser = localStorage.getItem('currentUser');
-      const empleados = localStorage.getItem('empleados');
+      const currentUser = loadFromStorage('currentUser');
+      const empleados = loadFromStorage('empleados');
       
       if (currentUser) {
-        const userData = JSON.parse(currentUser);
+        const userData = JSON.parse(typeof currentUser === 'string' ? currentUser : JSON.stringify(currentUser));
         setUser(userData);
         setIsAuthenticated(true);
       }
       
       if (empleados) {
-        const empleadosData = JSON.parse(empleados);
-        setEmpleadosRegistrados(empleadosData);
-        const conectados = empleadosData.filter((emp: User) => emp.isConnected);
+        const empleadosData = Array.isArray(empleados) ? empleados : 
+                             (typeof empleados === 'string' ? JSON.parse(empleados) : []);
+        
+        // Asegurar que todos los empleados tengan los campos requeridos
+        const empleadosValidados = empleadosData.map((emp: any) => ({
+          id: emp.id || `empleado_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          username: emp.username || 'Usuario sin nombre',
+          role: emp.role || 'empleado',
+          isConnected: false, // Resetear conexión al iniciar
+          createdAt: emp.createdAt || new Date().toISOString(),
+          ...(emp.password && { password: emp.password }),
+          ...(emp.equipoId && { equipoId: emp.equipoId })
+        }));
+        
+        setEmpleadosRegistrados(empleadosValidados);
+        
+        // Crear respaldo inmediato de los empleados validados
+        saveToStorage('empleados_backup', empleadosValidados);
+        
+        const conectados = empleadosValidados.filter((emp: User) => emp.isConnected);
         setEmpleadosConectados(conectados);
       }
+      
+      setDataLoaded(true);
     } catch (error) {
       console.error('Error al cargar datos:', error);
-      // Limpiar datos corruptos
+      
+      // Intentar cargar desde copias de seguridad
+      try {
+        const empleadosBackup = loadFromStorage('empleados_backup');
+        if (empleadosBackup && Array.isArray(empleadosBackup)) {
+          setEmpleadosRegistrados(empleadosBackup);
+          const conectados = empleadosBackup.filter((emp: User) => emp.isConnected);
+          setEmpleadosConectados(conectados);
+        }
+      } catch (e) {
+        console.error('Error al cargar copias de seguridad:', e);
+        // Inicializar con arrays vacíos en caso de error crítico
+        setEmpleadosRegistrados([]);
+        setEmpleadosConectados([]);
+      }
+      
+      // Limpiar sesión en caso de error
       localStorage.removeItem('currentUser');
-      localStorage.removeItem('empleados');
+      setUser(null);
+      setIsAuthenticated(false);
+      
+      setDataLoaded(true);
     }
   }, []);
+
+  // Guardar empleados cuando cambien
+  useEffect(() => {
+    if (dataLoaded && empleadosRegistrados.length > 0) {
+      saveToStorage('empleados', empleadosRegistrados);
+      
+      // Crear respaldo automático cada vez que cambian los empleados
+      const timestamp = new Date().toISOString().replace(/:/g, '-');
+      localStorage.setItem(`empleados_backup_${timestamp}`, JSON.stringify(empleadosRegistrados));
+      
+      // Mantener solo los últimos 5 backups
+      const keys = Object.keys(localStorage)
+        .filter(key => key.startsWith('empleados_backup_'))
+        .sort()
+        .reverse();
+      
+      if (keys.length > 5) {
+        keys.slice(5).forEach(key => localStorage.removeItem(key));
+      }
+    }
+  }, [empleadosRegistrados, dataLoaded]);
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
@@ -90,15 +221,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         setUser(adminUser);
         setIsAuthenticated(true);
-        localStorage.setItem('currentUser', JSON.stringify(adminUser));
+        saveToStorage('currentUser', adminUser);
         return true;
       }
 
       // Verificar empleados
-      const storedUsers = localStorage.getItem('empleados') || '[]';
-      const users = JSON.parse(storedUsers);
-      const foundUser = users.find((u: any) => 
-        u.username === username && u.password === password
+      const foundUser = empleadosRegistrados.find(u => 
+        u.username === username && (u as any).password === password
       );
 
       if (foundUser) {
@@ -113,18 +242,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
 
         // Actualizar usuario en localStorage
-        const updatedUsers = users.map((u: any) => 
+        const updatedUsers = empleadosRegistrados.map(u => 
           u.id === foundUser.id 
             ? { ...u, isConnected: true, lastLogin: empleadoUser.lastLogin }
             : u
         );
-        localStorage.setItem('empleados', JSON.stringify(updatedUsers));
-        localStorage.setItem('currentUser', JSON.stringify(empleadoUser));
+        
+        setEmpleadosRegistrados(updatedUsers);
+        setEmpleadosConectados(prev => [...prev.filter(u => u.id !== empleadoUser.id), empleadoUser]);
+        
+        saveToStorage('empleados', updatedUsers);
+        saveToStorage('currentUser', empleadoUser);
 
         setUser(empleadoUser);
         setIsAuthenticated(true);
-        setEmpleadosRegistrados(updatedUsers);
-        setEmpleadosConectados(prev => [...prev.filter(u => u.id !== empleadoUser.id), empleadoUser]);
 
         return true;
       }
@@ -144,7 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const updatedEmpleados = empleadosRegistrados.map(emp =>
             emp.id === user.id ? { ...emp, isConnected: false } : emp
           );
-          localStorage.setItem('empleados', JSON.stringify(updatedEmpleados));
+          saveToStorage('empleados', updatedEmpleados);
           setEmpleadosRegistrados(updatedEmpleados);
           setEmpleadosConectados(prev => prev.filter(u => u.id !== user.id));
         }
@@ -157,6 +288,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Error en logout:', error);
+      // Forzar logout en caso de error
+      localStorage.removeItem('currentUser');
+      setUser(null);
+      setIsAuthenticated(false);
+      router.push('/auth/login');
     }
   };
 
@@ -168,21 +304,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      const nuevoEmpleado: User = {
-        id: `empleado_${Date.now()}`,
+      const timestamp = new Date().toISOString();
+      const nuevoEmpleado = {
+        id: `empleado_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         username,
-        role: 'empleado',
+        password, // Guardar contraseña para autenticación
+        role: 'empleado' as const,
         isConnected: false,
-        createdAt: new Date().toISOString()
+        createdAt: timestamp,
+        lastLogin: null
       };
 
-      const empleadoConPassword = {
-        ...nuevoEmpleado,
-        password
-      };
-
-      const updatedEmpleados = [...empleadosRegistrados, empleadoConPassword];
-      localStorage.setItem('empleados', JSON.stringify(updatedEmpleados));
+      const updatedEmpleados = [...empleadosRegistrados, nuevoEmpleado];
+      
+      // Guardar con respaldo
+      saveToStorage('empleados', updatedEmpleados);
+      saveToStorage('empleados_backup', updatedEmpleados);
+      
       setEmpleadosRegistrados(updatedEmpleados);
 
       return true;
@@ -194,12 +332,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const eliminarEmpleado = (id: string) => {
     try {
+      // Solo el admin puede eliminar empleados
+      if (user?.role !== 'admin') {
+        console.error('Solo el administrador puede eliminar empleados');
+        return;
+      }
+      
+      // Crear respaldo antes de eliminar
+      saveToStorage('empleados_before_delete', empleadosRegistrados);
+      
       const updatedEmpleados = empleadosRegistrados.filter(emp => emp.id !== id);
-      localStorage.setItem('empleados', JSON.stringify(updatedEmpleados));
+      saveToStorage('empleados', updatedEmpleados);
       setEmpleadosRegistrados(updatedEmpleados);
       setEmpleadosConectados(prev => prev.filter(u => u.id !== id));
     } catch (error) {
       console.error('Error al eliminar empleado:', error);
+      
+      // Intentar restaurar desde el respaldo
+      const backup = loadFromStorage('empleados_before_delete');
+      if (backup) {
+        setEmpleadosRegistrados(backup);
+        saveToStorage('empleados', backup);
+      }
     }
   };
 

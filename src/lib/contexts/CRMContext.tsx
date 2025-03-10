@@ -36,7 +36,7 @@ export interface Tarea {
   id: string;
   titulo: string;
   descripcion: string;
-  estado: 'pendiente' | 'completada' | 'vencida';
+  estado: 'pendiente' | 'completada';
   equipoId: string;
   comision: number;
   fecha: string;
@@ -68,7 +68,26 @@ export interface CRMContextType {
   restaurarDatos: () => void;
 }
 
-const CRMContext = createContext<CRMContextType | null>(null);
+export const CRMContext = createContext<CRMContextType>({
+  clientes: [],
+  empleados: [],
+  equipos: [],
+  tareas: [],
+  agregarCliente: () => {},
+  agregarEmpleado: () => {},
+  agregarEquipo: () => {},
+  agregarTarea: () => {},
+  actualizarEmpleado: () => {},
+  actualizarTarea: () => {},
+  eliminarEquipo: () => {},
+  eliminarTarea: () => {},
+  buscarClientePorNombre: () => [],
+  agregarMiembroEquipo: () => {},
+  removerMiembroEquipo: () => {},
+  obtenerMiembrosEquipo: () => [],
+  respaldarDatos: () => {},
+  restaurarDatos: () => {}
+});
 
 const STORAGE_KEYS = {
   CLIENTES: 'crm_clientes',
@@ -84,53 +103,70 @@ const getTimestamp = () => new Date().toISOString();
 // Función para guardar datos en localStorage con manejo de errores
 const saveToStorage = (key: string, data: any) => {
   try {
+    // Crear una copia de seguridad antes de sobrescribir
+    const existingData = localStorage.getItem(key);
+    if (existingData) {
+      localStorage.setItem(`${key}_backup`, existingData);
+    }
+    
+    // Guardar los nuevos datos
     localStorage.setItem(key, JSON.stringify(data));
-    // Crear backup automático
-    localStorage.setItem(`${key}_backup`, JSON.stringify(data));
-  } catch (error: any) {
-    console.error(`Error al guardar datos en ${key}:`, error);
-    // Intentar limpiar localStorage si está lleno
-    if (error.name === 'QuotaExceededError' || error.code === 22 || error.code === 1014) {
+    
+    // Guardar timestamp de la última actualización
+    localStorage.setItem(`${key}_lastUpdate`, getTimestamp());
+    
+    return true;
+  } catch (error) {
+    console.error(`Error al guardar ${key}:`, error);
+    
+    // Intentar guardar en formato más pequeño si es un error de cuota
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       try {
-        // Mantener solo los datos esenciales
-        Object.keys(localStorage).forEach(key => {
-          if (!key.startsWith('crm_')) {
-            localStorage.removeItem(key);
-          }
-        });
-        // Intentar guardar nuevamente
+        // Eliminar backups antiguos para liberar espacio
+        localStorage.removeItem(`${key}_backup`);
         localStorage.setItem(key, JSON.stringify(data));
+        return true;
       } catch (e) {
-        console.error('No se pudo liberar espacio en localStorage');
+        console.error(`Error al guardar ${key} después de liberar espacio:`, e);
+        return false;
       }
     }
+    
+    return false;
   }
 };
 
-// Función para cargar datos de localStorage con respaldo
+// Función para cargar datos de localStorage con manejo de errores
 const loadFromStorage = (key: string) => {
   try {
     const data = localStorage.getItem(key);
+    
     if (data) {
       return JSON.parse(data);
     }
-    // Si no hay datos, intentar cargar el backup
+    
+    // Si no hay datos, intentar cargar desde la copia de seguridad
     const backup = localStorage.getItem(`${key}_backup`);
     if (backup) {
+      console.warn(`Cargando ${key} desde copia de seguridad`);
       return JSON.parse(backup);
     }
+    
     return null;
   } catch (error) {
-    console.error(`Error al cargar datos de ${key}:`, error);
-    // Intentar cargar el backup en caso de error
+    console.error(`Error al cargar ${key}:`, error);
+    
+    // Intentar cargar desde la copia de seguridad
     try {
       const backup = localStorage.getItem(`${key}_backup`);
       if (backup) {
+        console.warn(`Cargando ${key} desde copia de seguridad después de error`);
         return JSON.parse(backup);
       }
     } catch (e) {
-      console.error(`Error al cargar backup de ${key}:`, e);
+      console.error(`Error al cargar copia de seguridad de ${key}:`, e);
     }
+    
     return null;
   }
 };
@@ -140,80 +176,114 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [tareas, setTareas] = useState<Tarea[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   // Cargar datos al iniciar
   useEffect(() => {
     const loadData = () => {
-      const storedClientes = loadFromStorage(STORAGE_KEYS.CLIENTES);
-      const storedEmpleados = loadFromStorage(STORAGE_KEYS.EMPLEADOS);
-      const storedEquipos = loadFromStorage(STORAGE_KEYS.EQUIPOS);
-      const storedTareas = loadFromStorage(STORAGE_KEYS.TAREAS);
-
-      if (storedClientes) setClientes(storedClientes);
-      if (storedEmpleados) setEmpleados(storedEmpleados);
-      if (storedEquipos) setEquipos(storedEquipos);
-      if (storedTareas) setTareas(storedTareas);
+      try {
+        // Cargar datos desde localStorage
+        const clientesData = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
+        const empleadosData = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
+        const equiposData = loadFromStorage(STORAGE_KEYS.EQUIPOS) || [];
+        const tareasData = loadFromStorage(STORAGE_KEYS.TAREAS) || [];
+        
+        // Actualizar estados
+        setClientes(clientesData);
+        setEmpleados(empleadosData);
+        setEquipos(equiposData);
+        
+        // Actualizar estado de tareas (mover vencidas a pendientes)
+        const hoy = new Date().toISOString().split('T')[0];
+        const tareasActualizadas = tareasData.map((tarea: Tarea) => {
+          if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
+            return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
+          }
+          return tarea;
+        });
+        
+        setTareas(tareasActualizadas);
+        
+        // Si se actualizaron las tareas, guardar los cambios
+        if (JSON.stringify(tareasData) !== JSON.stringify(tareasActualizadas)) {
+          saveToStorage(STORAGE_KEYS.TAREAS, tareasActualizadas);
+        }
+        
+        setDataLoaded(true);
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
+        
+        // Intentar cargar desde copias de seguridad
+        const clientesBackup = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
+        const empleadosBackup = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
+        const equiposBackup = loadFromStorage(STORAGE_KEYS.EQUIPOS) || [];
+        const tareasBackup = loadFromStorage(STORAGE_KEYS.TAREAS) || [];
+        
+        setClientes(clientesBackup);
+        setEmpleados(empleadosBackup);
+        setEquipos(equiposBackup);
+        setTareas(tareasBackup);
+        
+        setDataLoaded(true);
+      }
     };
-
+    
     loadData();
+    
+    // Configurar intervalo para verificar y actualizar tareas pendientes
+    const interval = setInterval(() => {
+      if (dataLoaded) {
+        const hoy = new Date().toISOString().split('T')[0];
+        setTareas(prevTareas => {
+          const tareasActualizadas = prevTareas.map(tarea => {
+            if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
+              return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
+            }
+            return tarea;
+          });
+          
+          // Guardar solo si hay cambios
+          if (JSON.stringify(prevTareas) !== JSON.stringify(tareasActualizadas)) {
+            saveToStorage(STORAGE_KEYS.TAREAS, tareasActualizadas);
+          }
+          
+          return tareasActualizadas;
+        });
+      }
+    }, 3600000); // Verificar cada hora
+    
+    return () => clearInterval(interval);
   }, []);
 
   // Guardar datos cuando cambien
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.CLIENTES, clientes);
-  }, [clientes]);
-
+    if (dataLoaded) {
+      saveToStorage(STORAGE_KEYS.CLIENTES, clientes);
+    }
+  }, [clientes, dataLoaded]);
+  
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.EMPLEADOS, empleados);
-  }, [empleados]);
-
+    if (dataLoaded) {
+      saveToStorage(STORAGE_KEYS.EMPLEADOS, empleados);
+    }
+  }, [empleados, dataLoaded]);
+  
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.EQUIPOS, equipos);
-  }, [equipos]);
-
+    if (dataLoaded) {
+      saveToStorage(STORAGE_KEYS.EQUIPOS, equipos);
+    }
+  }, [equipos, dataLoaded]);
+  
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.TAREAS, tareas);
-  }, [tareas]);
+    if (dataLoaded) {
+      saveToStorage(STORAGE_KEYS.TAREAS, tareas);
+    }
+  }, [tareas, dataLoaded]);
 
-  // Crear respaldo automático cada hora
-  useEffect(() => {
-    const backupInterval = setInterval(() => {
-      const backup = {
-        clientes,
-        empleados,
-        equipos,
-        tareas,
-        timestamp: getTimestamp()
-      };
-      saveToStorage(STORAGE_KEYS.BACKUP, backup);
-    }, 3600000); // 1 hora
-
-    return () => clearInterval(backupInterval);
-  }, [clientes, empleados, equipos, tareas]);
-
-  // Verificar y resetear comisiones cada 30 días
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const ahora = new Date();
-      empleados.forEach(empleado => {
-        const ultimaComision = new Date(empleado.ultimaComision || empleado.fechaCreacion);
-        const diasTranscurridos = Math.floor((ahora.getTime() - ultimaComision.getTime()) / (1000 * 60 * 60 * 24));
-        
-        if (diasTranscurridos >= 30) {
-          actualizarEmpleado(empleado.id, {
-            comision: 0,
-            ultimaComision: ahora.toISOString()
-          });
-        }
-      });
-    }, 60000); // Verificar cada minuto
-
-    return () => clearInterval(interval);
-  }, [empleados]);
-
+  // Funciones para manipular datos
   const agregarCliente = (cliente: Omit<Cliente, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
     const timestamp = getTimestamp();
-    const nuevoCliente = {
+    const nuevoCliente: Cliente = {
       ...cliente,
       id: `cliente_${Date.now()}`,
       fechaCreacion: timestamp,
@@ -224,10 +294,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   const agregarEmpleado = (empleado: Omit<Empleado, 'id' | 'fechaCreacion' | 'ultimaModificacion' | 'ultimaComision'>) => {
     const timestamp = getTimestamp();
-    const nuevoEmpleado = {
+    const nuevoEmpleado: Empleado = {
       ...empleado,
       id: `empleado_${Date.now()}`,
-      comision: 0,
       ultimaComision: timestamp,
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
@@ -237,7 +306,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   const agregarEquipo = (equipo: Omit<Equipo, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
     const timestamp = getTimestamp();
-    const nuevoEquipo = {
+    const nuevoEquipo: Equipo = {
       ...equipo,
       id: `equipo_${Date.now()}`,
       fechaCreacion: timestamp,
@@ -260,46 +329,35 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   };
 
   const actualizarEmpleado = (id: string, datos: Partial<Empleado>) => {
-    setEmpleados(prev => prev.map(emp => 
-      emp.id === id ? { ...emp, ...datos, ultimaModificacion: getTimestamp() } : emp
+    setEmpleados(prev => prev.map(empleado => 
+      empleado.id === id 
+        ? { ...empleado, ...datos, ultimaModificacion: getTimestamp() } 
+        : empleado
     ));
   };
 
   const actualizarTarea = (id: string, datos: Partial<Tarea>) => {
-    setTareas(prev => prev.map(tarea => {
-      if (tarea.id === id) {
-        const tareaActualizada = { ...tarea, ...datos, ultimaModificacion: getTimestamp() };
-        
-        // Si la tarea se completó, actualizar la comisión del empleado
-        if (datos.estado === 'completada' && tarea.estado !== 'completada') {
-          const equipo = equipos.find(eq => eq.id === tarea.equipoId);
-          if (equipo) {
-            equipo.members.forEach(empleadoId => {
-              const empleado = empleados.find(emp => emp.id === empleadoId);
-              if (empleado) {
-                actualizarEmpleado(empleadoId, {
-                  comision: 1,
-                  ultimaComision: getTimestamp()
-                });
-              }
-            });
-          }
-        }
-        
-        return tareaActualizada;
-      }
-      return tarea;
-    }));
+    setTareas(prev => prev.map(tarea => 
+      tarea.id === id 
+        ? { ...tarea, ...datos, ultimaModificacion: getTimestamp() } 
+        : tarea
+    ));
   };
 
   const eliminarEquipo = (id: string) => {
-    // Marcar tareas del equipo como vencidas
-    setTareas(prev => prev.map(tarea => 
-      tarea.equipoId === id ? { ...tarea, estado: 'vencida', ultimaModificacion: getTimestamp() } : tarea
-    ));
+    // Obtener miembros del equipo antes de eliminarlo
+    const equipo = equipos.find(eq => eq.id === id);
+    if (equipo) {
+      // Actualizar empleados para quitar la referencia al equipo eliminado
+      setEmpleados(prev => prev.map(empleado => 
+        equipo.members.includes(empleado.id)
+          ? { ...empleado, equipo: '', ultimaModificacion: getTimestamp() }
+          : empleado
+      ));
+    }
     
-    // Eliminar equipo
-    setEquipos(prev => prev.filter(eq => eq.id !== id));
+    // Eliminar el equipo
+    setEquipos(prev => prev.filter(equipo => equipo.id !== id));
   };
 
   const eliminarTarea = (id: string) => {
@@ -307,36 +365,59 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   };
 
   const buscarClientePorNombre = (nombre: string) => {
-    const termino = nombre.toLowerCase();
+    if (!nombre.trim()) return clientes;
     return clientes.filter(cliente => 
-      cliente.nombre.toLowerCase().includes(termino)
+      cliente.nombre.toLowerCase().includes(nombre.toLowerCase())
     );
   };
 
   const agregarMiembroEquipo = (equipoId: string, empleadoId: string) => {
-    setEquipos(prev => prev.map(equipo => {
-      if (equipo.id === equipoId && !equipo.members.includes(empleadoId)) {
-        return {
-          ...equipo,
-          members: [...equipo.members, empleadoId],
-          ultimaModificacion: getTimestamp()
-        };
-      }
-      return equipo;
-    }));
+    // Verificar si el empleado ya está en otro equipo
+    const equipoActual = equipos.find(eq => 
+      eq.id !== equipoId && eq.members.includes(empleadoId)
+    );
+    
+    if (equipoActual) {
+      // Remover del equipo actual
+      setEquipos(prev => prev.map(eq => 
+        eq.id === equipoActual.id
+          ? { 
+              ...eq, 
+              members: eq.members.filter(id => id !== empleadoId),
+              ultimaModificacion: getTimestamp()
+            }
+          : eq
+      ));
+    }
+    
+    // Agregar al nuevo equipo
+    setEquipos(prev => prev.map(eq => 
+      eq.id === equipoId
+        ? { 
+            ...eq, 
+            members: [...eq.members, empleadoId],
+            ultimaModificacion: getTimestamp()
+          }
+        : eq
+    ));
+    
+    // Actualizar el empleado
+    actualizarEmpleado(empleadoId, { equipo: equipoId });
   };
 
   const removerMiembroEquipo = (equipoId: string, empleadoId: string) => {
-    setEquipos(prev => prev.map(equipo => {
-      if (equipo.id === equipoId) {
-        return {
-          ...equipo,
-          members: equipo.members.filter(id => id !== empleadoId),
-          ultimaModificacion: getTimestamp()
-        };
-      }
-      return equipo;
-    }));
+    setEquipos(prev => prev.map(eq => 
+      eq.id === equipoId
+        ? { 
+            ...eq, 
+            members: eq.members.filter(id => id !== empleadoId),
+            ultimaModificacion: getTimestamp()
+          }
+        : eq
+    ));
+    
+    // Actualizar el empleado
+    actualizarEmpleado(empleadoId, { equipo: '' });
   };
 
   const obtenerMiembrosEquipo = (equipoId: string) => {
@@ -344,30 +425,75 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     return equipo ? equipo.members : [];
   };
 
-  // Función para crear respaldo manual
+  // Función para respaldar todos los datos
   const respaldarDatos = () => {
-    const backup = {
-      clientes,
-      empleados,
-      equipos,
-      tareas,
-      timestamp: getTimestamp()
-    };
-    saveToStorage(STORAGE_KEYS.BACKUP, backup);
+    try {
+      const timestamp = new Date().toISOString().replace(/:/g, '-');
+      const backup = {
+        clientes,
+        empleados,
+        equipos,
+        tareas,
+        timestamp
+      };
+      
+      // Guardar en localStorage con nombre único
+      localStorage.setItem(`backup_${timestamp}`, JSON.stringify(backup));
+      
+      // Mantener solo los últimos 5 backups
+      const keys = Object.keys(localStorage).filter(key => key.startsWith('backup_'));
+      keys.sort().reverse();
+      
+      if (keys.length > 5) {
+        keys.slice(5).forEach(key => localStorage.removeItem(key));
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error al respaldar datos:', error);
+      return false;
+    }
   };
 
-  // Función para restaurar desde respaldo
+  // Función para restaurar desde un respaldo
   const restaurarDatos = () => {
     try {
-      const backup = loadFromStorage(STORAGE_KEYS.BACKUP);
-      if (backup) {
-        setClientes(backup.clientes);
-        setEmpleados(backup.empleados);
-        setEquipos(backup.equipos);
-        setTareas(backup.tareas);
+      // Obtener la lista de backups disponibles
+      const keys = Object.keys(localStorage)
+        .filter(key => key.startsWith('backup_'))
+        .sort()
+        .reverse();
+      
+      if (keys.length === 0) {
+        console.warn('No hay respaldos disponibles');
+        return false;
       }
+      
+      // Cargar el respaldo más reciente
+      const latestBackup = localStorage.getItem(keys[0]);
+      if (!latestBackup) {
+        console.warn('Respaldo no encontrado');
+        return false;
+      }
+      
+      const data = JSON.parse(latestBackup);
+      
+      // Actualizar estados
+      setClientes(data.clientes || []);
+      setEmpleados(data.empleados || []);
+      setEquipos(data.equipos || []);
+      setTareas(data.tareas || []);
+      
+      // Guardar en localStorage
+      saveToStorage(STORAGE_KEYS.CLIENTES, data.clientes || []);
+      saveToStorage(STORAGE_KEYS.EMPLEADOS, data.empleados || []);
+      saveToStorage(STORAGE_KEYS.EQUIPOS, data.equipos || []);
+      saveToStorage(STORAGE_KEYS.TAREAS, data.tareas || []);
+      
+      return true;
     } catch (error) {
       console.error('Error al restaurar datos:', error);
+      return false;
     }
   };
 
@@ -398,9 +524,5 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 }
 
 export function useCRM() {
-  const context = useContext(CRMContext);
-  if (!context) {
-    throw new Error('useCRM debe ser usado dentro de un CRMProvider');
-  }
-  return context;
+  return useContext(CRMContext);
 } 
