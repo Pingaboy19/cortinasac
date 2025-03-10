@@ -147,7 +147,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isConnected: false, // Resetear conexión al iniciar
           createdAt: emp.createdAt || new Date().toISOString(),
           ...(emp.password && { password: emp.password }),
-          ...(emp.equipoId && { equipoId: emp.equipoId })
+          ...(emp.equipoId && { equipoId: emp.equipoId }),
+          ...(emp.lastLogin && { lastLogin: emp.lastLogin })
         }));
         
         setEmpleadosRegistrados(empleadosValidados);
@@ -305,14 +306,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const timestamp = new Date().toISOString();
-      const nuevoEmpleado = {
+      const nuevoEmpleado: User & { password: string } = {
         id: `empleado_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         username,
         password, // Guardar contraseña para autenticación
-        role: 'empleado' as const,
+        role: 'empleado',
         isConnected: false,
-        createdAt: timestamp,
-        lastLogin: null
+        createdAt: timestamp
       };
 
       const updatedEmpleados = [...empleadosRegistrados, nuevoEmpleado];
@@ -321,7 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveToStorage('empleados', updatedEmpleados);
       saveToStorage('empleados_backup', updatedEmpleados);
       
-      setEmpleadosRegistrados(updatedEmpleados);
+      setEmpleadosRegistrados(updatedEmpleados as User[]);
 
       return true;
     } catch (error) {
