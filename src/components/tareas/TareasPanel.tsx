@@ -209,12 +209,10 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
         return (
           <div
             key={tarea.id}
-            className={`p-4 rounded-lg border ${
+            className={`p-4 rounded-lg border mb-4 ${
               tarea.estado === 'completada'
                 ? 'bg-green-50 border-green-200'
-                : tarea.estado === 'vencida'
-                ? 'bg-red-50 border-red-200'
-                : 'bg-white'
+                : 'bg-white border-gray-200'
             }`}
           >
             <div className="flex justify-between items-start mb-2">
@@ -245,8 +243,6 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                 className={`px-2 py-1 text-sm rounded ${
                   tarea.estado === 'completada'
                     ? 'bg-green-100 text-green-800'
-                    : tarea.estado === 'vencida'
-                    ? 'bg-red-100 text-red-800'
                     : 'bg-blue-100 text-blue-800'
                 }`}
               >
@@ -422,33 +418,38 @@ export default function TareasPanel({ empleadoId }: TareasPanelProps) {
                   return (
                     <div
                       key={fechaStr}
-                      className={`border rounded p-2 text-center cursor-pointer hover:bg-gray-50 ${
-                        esFechaActual ? 'bg-blue-100' : ''
-                      } ${!fecha.getDate() ? 'opacity-50' : ''}`}
-                      onClick={() => setFechaSeleccionada(fecha)}
+                      className={`p-1 sm:p-2 min-h-[60px] sm:min-h-[100px] border rounded ${
+                        esFechaActual ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
+                      }`}
                     >
-                      <div className="text-gray-900">{fecha.getDate()}</div>
-                      {tareasDelDia.map(tarea => {
-                        const equipo = equipos.find(eq => eq.id === tarea.equipoId);
-                        return (
-                          <div
-                            key={tarea.id}
-                            className={`text-xs p-1 mt-1 rounded truncate ${
-                              tarea.estado === 'completada'
-                                ? 'bg-green-100 text-green-800'
-                                : tarea.estado === 'vencida'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-yellow-100 text-yellow-800'
-                            }`}
-                            style={{
-                              backgroundColor: equipo?.color || 'transparent',
-                              color: 'black'
-                            }}
-                          >
-                            {tarea.titulo.substring(0, 3)}...
-                          </div>
-                        );
-                      })}
+                      <div className="text-xs sm:text-sm font-medium mb-1 text-gray-900">{fecha.getDate()}</div>
+                      <div className="space-y-1">
+                        {tareasDelDia.map(tarea => {
+                          const equipo = equipos.find(eq => eq.id === tarea.equipoId);
+                          return (
+                            <div
+                              key={tarea.id}
+                              className={`text-[10px] sm:text-xs p-1 rounded cursor-pointer transition-colors ${
+                                tarea.estado === 'completada'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                              }`}
+                              onClick={() => {
+                                if (!isAdmin && tarea.estado === 'pendiente') {
+                                  const confirmar = window.confirm('¿Deseas marcar esta tarea como completada?');
+                                  if (confirmar) {
+                                    handleCompletarTarea(tarea.id);
+                                  }
+                                }
+                              }}
+                              title={`${tarea.titulo} - ${equipo?.nombre || 'Sin equipo'} - Comisión: ${tarea.comision}%`}
+                            >
+                              <div className="font-medium truncate text-gray-900">{tarea.titulo}</div>
+                              <div className="text-[8px] sm:text-xs opacity-75 truncate text-gray-900">{equipo?.nombre}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}

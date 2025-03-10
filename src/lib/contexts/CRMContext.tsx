@@ -253,7 +253,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     }, 3600000); // Verificar cada hora
     
     return () => clearInterval(interval);
-  }, []);
+  }, [dataLoaded]);
 
   // Guardar datos cuando cambien
   useEffect(() => {
