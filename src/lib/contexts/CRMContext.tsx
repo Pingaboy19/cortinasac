@@ -1,6 +1,8 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useAuth } from './AuthContext';
+import syncService from '@/lib/services/syncService';
 
 interface Cliente {
   id: string;
@@ -100,185 +102,148 @@ const STORAGE_KEYS = {
 // Función para obtener timestamp actual
 const getTimestamp = () => new Date().toISOString();
 
-// Función para guardar datos en localStorage con manejo de errores
-const saveToStorage = (key: string, data: any) => {
-  try {
-    // Crear una copia de seguridad antes de sobrescribir
-    const existingData = localStorage.getItem(key);
-    if (existingData) {
-      localStorage.setItem(`${key}_backup`, existingData);
-    }
-    
-    // Guardar los nuevos datos
-    localStorage.setItem(key, JSON.stringify(data));
-    
-    // Guardar timestamp de la última actualización
-    localStorage.setItem(`${key}_lastUpdate`, getTimestamp());
-    
-    return true;
-  } catch (error) {
-    console.error(`Error al guardar ${key}:`, error);
-    
-    // Intentar guardar en formato más pequeño si es un error de cuota
-    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      try {
-        // Eliminar backups antiguos para liberar espacio
-        localStorage.removeItem(`${key}_backup`);
-        localStorage.setItem(key, JSON.stringify(data));
-        return true;
-      } catch (e) {
-        console.error(`Error al guardar ${key} después de liberar espacio:`, e);
-        return false;
-      }
-    }
-    
-    return false;
-  }
-};
-
-// Función para cargar datos de localStorage con manejo de errores
-const loadFromStorage = (key: string) => {
-  try {
-    const data = localStorage.getItem(key);
-    
-    if (data) {
-      return JSON.parse(data);
-    }
-    
-    // Si no hay datos, intentar cargar desde la copia de seguridad
-    const backup = localStorage.getItem(`${key}_backup`);
-    if (backup) {
-      console.warn(`Cargando ${key} desde copia de seguridad`);
-      return JSON.parse(backup);
-    }
-    
-    return null;
-  } catch (error) {
-    console.error(`Error al cargar ${key}:`, error);
-    
-    // Intentar cargar desde la copia de seguridad
-    try {
-      const backup = localStorage.getItem(`${key}_backup`);
-      if (backup) {
-        console.warn(`Cargando ${key} desde copia de seguridad después de error`);
-        return JSON.parse(backup);
-      }
-    } catch (e) {
-      console.error(`Error al cargar copia de seguridad de ${key}:`, e);
-    }
-    
-    return null;
-  }
-};
-
+// Proveedor del contexto
 export function CRMProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  // Estados
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [syncInitialized, setSyncInitialized] = useState(false);
 
   // Cargar datos al iniciar
   useEffect(() => {
     const loadData = () => {
       try {
-        // Cargar datos desde localStorage
-        const clientesData = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
-        const empleadosData = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
-        const equiposData = loadFromStorage(STORAGE_KEYS.EQUIPOS) || [];
-        const tareasData = loadFromStorage(STORAGE_KEYS.TAREAS) || [];
+        // Cargar datos desde localStorage a través del servicio de sincronización
+        const clientesData = syncService.loadData(STORAGE_KEYS.CLIENTES) || [];
+        const empleadosData = syncService.loadData(STORAGE_KEYS.EMPLEADOS) || [];
+        const equiposData = syncService.loadData(STORAGE_KEYS.EQUIPOS) || [];
+        const tareasData = syncService.loadData(STORAGE_KEYS.TAREAS) || [];
         
         // Actualizar estados
-        setClientes(clientesData);
-        setEmpleados(empleadosData);
-        setEquipos(equiposData);
+        setClientes(Array.isArray(clientesData) ? clientesData : []);
+        setEmpleados(Array.isArray(empleadosData) ? empleadosData : []);
+        setEquipos(Array.isArray(equiposData) ? equiposData : []);
         
         // Actualizar estado de tareas (mover vencidas a pendientes)
         const hoy = new Date().toISOString().split('T')[0];
-        const tareasActualizadas = tareasData.map((tarea: Tarea) => {
+        const tareasActualizadas = Array.isArray(tareasData) 
+          ? tareasData.map((tarea: Tarea) => {
+              if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
+                return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
+              }
+              return tarea;
+            })
+          : [];
+        
+        setTareas(tareasActualizadas);
+        
+        // Si se actualizaron las tareas, guardar los cambios
+        if (JSON.stringify(tareasData) !== JSON.stringify(tareasActualizadas)) {
+          syncService.saveData(STORAGE_KEYS.TAREAS, tareasActualizadas);
+        }
+        
+        setDataLoaded(true);
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
+        setDataLoaded(true);
+      }
+    };
+    
+    loadData();
+  }, []);
+
+  // Configurar sincronización cuando los datos estén cargados
+  useEffect(() => {
+    if (!dataLoaded || syncInitialized) return;
+    
+    // Configurar listener para cambios en localStorage (otras pestañas/ventanas)
+    const removeStorageListener = syncService.setupStorageListener((key, newData) => {
+      // Actualizar estado según la clave
+      switch (key) {
+        case STORAGE_KEYS.CLIENTES:
+          setClientes(newData);
+          break;
+        case STORAGE_KEYS.EMPLEADOS:
+          setEmpleados(newData);
+          break;
+        case STORAGE_KEYS.EQUIPOS:
+          setEquipos(newData);
+          break;
+        case STORAGE_KEYS.TAREAS:
+          setTareas(newData);
+          break;
+      }
+    });
+    
+    // Configurar sincronización periódica
+    const stopPeriodicSync = syncService.startPeriodicSync(
+      [STORAGE_KEYS.CLIENTES, STORAGE_KEYS.EMPLEADOS, STORAGE_KEYS.EQUIPOS, STORAGE_KEYS.TAREAS],
+      (key, newData) => {
+        // Actualizar estado según la clave
+        switch (key) {
+          case STORAGE_KEYS.CLIENTES:
+            setClientes(newData);
+            break;
+          case STORAGE_KEYS.EMPLEADOS:
+            setEmpleados(newData);
+            break;
+          case STORAGE_KEYS.EQUIPOS:
+            setEquipos(newData);
+            break;
+          case STORAGE_KEYS.TAREAS:
+            setTareas(newData);
+            break;
+        }
+      }
+    );
+    
+    // Configurar listener para eventos personalizados
+    const handleDataUpdated = (event: CustomEvent) => {
+      const { key, timestamp } = event.detail;
+      console.log(`Evento de actualización recibido para ${key} con timestamp ${timestamp}`);
+    };
+    
+    window.addEventListener('data-updated', handleDataUpdated as EventListener);
+    
+    setSyncInitialized(true);
+    
+    // Limpiar listeners al desmontar
+    return () => {
+      removeStorageListener();
+      stopPeriodicSync();
+      window.removeEventListener('data-updated', handleDataUpdated as EventListener);
+    };
+  }, [dataLoaded, syncInitialized]);
+
+  // Configurar intervalo para verificar y actualizar tareas pendientes
+  useEffect(() => {
+    if (!dataLoaded) return;
+    
+    const interval = setInterval(() => {
+      const hoy = new Date().toISOString().split('T')[0];
+      setTareas(prevTareas => {
+        const tareasActualizadas = prevTareas.map(tarea => {
           if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
             return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
           }
           return tarea;
         });
         
-        setTareas(tareasActualizadas);
-        
-        // Si se actualizaron las tareas, guardar los cambios
-        if (JSON.stringify(tareasData) !== JSON.stringify(tareasActualizadas)) {
-          saveToStorage(STORAGE_KEYS.TAREAS, tareasActualizadas);
+        // Guardar solo si hay cambios
+        if (JSON.stringify(prevTareas) !== JSON.stringify(tareasActualizadas)) {
+          syncService.saveData(STORAGE_KEYS.TAREAS, tareasActualizadas);
         }
         
-        setDataLoaded(true);
-      } catch (error) {
-        console.error('Error al cargar datos:', error);
-        
-        // Intentar cargar desde copias de seguridad
-        const clientesBackup = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
-        const empleadosBackup = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
-        const equiposBackup = loadFromStorage(STORAGE_KEYS.EQUIPOS) || [];
-        const tareasBackup = loadFromStorage(STORAGE_KEYS.TAREAS) || [];
-        
-        setClientes(clientesBackup);
-        setEmpleados(empleadosBackup);
-        setEquipos(equiposBackup);
-        setTareas(tareasBackup);
-        
-        setDataLoaded(true);
-      }
-    };
-    
-    loadData();
-    
-    // Configurar intervalo para verificar y actualizar tareas pendientes
-    const interval = setInterval(() => {
-      if (dataLoaded) {
-        const hoy = new Date().toISOString().split('T')[0];
-        setTareas(prevTareas => {
-          const tareasActualizadas = prevTareas.map(tarea => {
-            if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
-              return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
-            }
-            return tarea;
-          });
-          
-          // Guardar solo si hay cambios
-          if (JSON.stringify(prevTareas) !== JSON.stringify(tareasActualizadas)) {
-            saveToStorage(STORAGE_KEYS.TAREAS, tareasActualizadas);
-          }
-          
-          return tareasActualizadas;
-        });
-      }
+        return tareasActualizadas;
+      });
     }, 3600000); // Verificar cada hora
     
     return () => clearInterval(interval);
   }, [dataLoaded]);
-
-  // Guardar datos cuando cambien
-  useEffect(() => {
-    if (dataLoaded) {
-      saveToStorage(STORAGE_KEYS.CLIENTES, clientes);
-    }
-  }, [clientes, dataLoaded]);
-  
-  useEffect(() => {
-    if (dataLoaded) {
-      saveToStorage(STORAGE_KEYS.EMPLEADOS, empleados);
-    }
-  }, [empleados, dataLoaded]);
-  
-  useEffect(() => {
-    if (dataLoaded) {
-      saveToStorage(STORAGE_KEYS.EQUIPOS, equipos);
-    }
-  }, [equipos, dataLoaded]);
-  
-  useEffect(() => {
-    if (dataLoaded) {
-      saveToStorage(STORAGE_KEYS.TAREAS, tareas);
-    }
-  }, [tareas, dataLoaded]);
 
   // Funciones para manipular datos
   const agregarCliente = (cliente: Omit<Cliente, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
@@ -289,7 +254,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
     };
-    setClientes(prev => [...prev, nuevoCliente]);
+    
+    const nuevosClientes = [...clientes, nuevoCliente];
+    setClientes(nuevosClientes);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.CLIENTES, nuevosClientes);
   };
 
   const agregarEmpleado = (empleado: Omit<Empleado, 'id' | 'fechaCreacion' | 'ultimaModificacion' | 'ultimaComision'>) => {
@@ -301,7 +271,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
     };
-    setEmpleados(prev => [...prev, nuevoEmpleado]);
+    
+    const nuevosEmpleados = [...empleados, nuevoEmpleado];
+    setEmpleados(nuevosEmpleados);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
   };
 
   const agregarEquipo = (equipo: Omit<Equipo, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
@@ -312,7 +287,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
     };
-    setEquipos(prev => [...prev, nuevoEquipo]);
+    
+    const nuevosEquipos = [...equipos, nuevoEquipo];
+    setEquipos(nuevosEquipos);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
   };
 
   const agregarTarea = (tarea: Omit<Tarea, 'id' | 'estado' | 'observaciones' | 'fechaCreacion' | 'ultimaModificacion'>) => {
@@ -325,23 +305,38 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
     };
-    setTareas(prev => [...prev, nuevaTarea]);
+    
+    const nuevasTareas = [...tareas, nuevaTarea];
+    setTareas(nuevasTareas);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
   };
 
   const actualizarEmpleado = (id: string, datos: Partial<Empleado>) => {
-    setEmpleados(prev => prev.map(empleado => 
+    const nuevosEmpleados = empleados.map(empleado => 
       empleado.id === id 
         ? { ...empleado, ...datos, ultimaModificacion: getTimestamp() } 
         : empleado
-    ));
+    );
+    
+    setEmpleados(nuevosEmpleados);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
   };
 
   const actualizarTarea = (id: string, datos: Partial<Tarea>) => {
-    setTareas(prev => prev.map(tarea => 
+    const nuevasTareas = tareas.map(tarea => 
       tarea.id === id 
         ? { ...tarea, ...datos, ultimaModificacion: getTimestamp() } 
         : tarea
-    ));
+    );
+    
+    setTareas(nuevasTareas);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
   };
 
   const eliminarEquipo = (id: string) => {
@@ -349,19 +344,32 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     const equipo = equipos.find(eq => eq.id === id);
     if (equipo) {
       // Actualizar empleados para quitar la referencia al equipo eliminado
-      setEmpleados(prev => prev.map(empleado => 
+      const nuevosEmpleados = empleados.map(empleado => 
         equipo.members.includes(empleado.id)
           ? { ...empleado, equipo: '', ultimaModificacion: getTimestamp() }
           : empleado
-      ));
+      );
+      
+      setEmpleados(nuevosEmpleados);
+      
+      // Guardar con sincronización
+      syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
     }
     
     // Eliminar el equipo
-    setEquipos(prev => prev.filter(equipo => equipo.id !== id));
+    const nuevosEquipos = equipos.filter(equipo => equipo.id !== id);
+    setEquipos(nuevosEquipos);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
   };
 
   const eliminarTarea = (id: string) => {
-    setTareas(prev => prev.filter(tarea => tarea.id !== id));
+    const nuevasTareas = tareas.filter(tarea => tarea.id !== id);
+    setTareas(nuevasTareas);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
   };
 
   const buscarClientePorNombre = (nombre: string) => {
@@ -377,9 +385,11 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       eq.id !== equipoId && eq.members.includes(empleadoId)
     );
     
+    let nuevosEquipos = [...equipos];
+    
     if (equipoActual) {
       // Remover del equipo actual
-      setEquipos(prev => prev.map(eq => 
+      nuevosEquipos = nuevosEquipos.map(eq => 
         eq.id === equipoActual.id
           ? { 
               ...eq, 
@@ -387,11 +397,11 @@ export function CRMProvider({ children }: { children: ReactNode }) {
               ultimaModificacion: getTimestamp()
             }
           : eq
-      ));
+      );
     }
     
     // Agregar al nuevo equipo
-    setEquipos(prev => prev.map(eq => 
+    nuevosEquipos = nuevosEquipos.map(eq => 
       eq.id === equipoId
         ? { 
             ...eq, 
@@ -399,14 +409,19 @@ export function CRMProvider({ children }: { children: ReactNode }) {
             ultimaModificacion: getTimestamp()
           }
         : eq
-    ));
+    );
+    
+    setEquipos(nuevosEquipos);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
     
     // Actualizar el empleado
     actualizarEmpleado(empleadoId, { equipo: equipoId });
   };
 
   const removerMiembroEquipo = (equipoId: string, empleadoId: string) => {
-    setEquipos(prev => prev.map(eq => 
+    const nuevosEquipos = equipos.map(eq => 
       eq.id === equipoId
         ? { 
             ...eq, 
@@ -414,7 +429,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
             ultimaModificacion: getTimestamp()
           }
         : eq
-    ));
+    );
+    
+    setEquipos(nuevosEquipos);
+    
+    // Guardar con sincronización
+    syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
     
     // Actualizar el empleado
     actualizarEmpleado(empleadoId, { equipo: '' });
@@ -437,21 +457,20 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         timestamp
       };
       
-      // Guardar en localStorage con nombre único
-      localStorage.setItem(`backup_${timestamp}`, JSON.stringify(backup));
+      // Guardar con sincronización
+      syncService.saveData(`${STORAGE_KEYS.BACKUP}_${timestamp}`, backup);
       
       // Mantener solo los últimos 5 backups
-      const keys = Object.keys(localStorage).filter(key => key.startsWith('backup_'));
-      keys.sort().reverse();
+      const keys = Object.keys(localStorage)
+        .filter(key => key.startsWith(`${STORAGE_KEYS.BACKUP}_`))
+        .sort()
+        .reverse();
       
       if (keys.length > 5) {
         keys.slice(5).forEach(key => localStorage.removeItem(key));
       }
-      
-      return true;
     } catch (error) {
       console.error('Error al respaldar datos:', error);
-      return false;
     }
   };
 
@@ -460,40 +479,35 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     try {
       // Obtener la lista de backups disponibles
       const keys = Object.keys(localStorage)
-        .filter(key => key.startsWith('backup_'))
+        .filter(key => key.startsWith(`${STORAGE_KEYS.BACKUP}_`))
         .sort()
         .reverse();
       
       if (keys.length === 0) {
         console.warn('No hay respaldos disponibles');
-        return false;
+        return;
       }
       
       // Cargar el respaldo más reciente
-      const latestBackup = localStorage.getItem(keys[0]);
-      if (!latestBackup) {
+      const latestBackupData = syncService.loadData(keys[0]);
+      if (!latestBackupData) {
         console.warn('Respaldo no encontrado');
-        return false;
+        return;
       }
       
-      const data = JSON.parse(latestBackup);
-      
       // Actualizar estados
-      setClientes(data.clientes || []);
-      setEmpleados(data.empleados || []);
-      setEquipos(data.equipos || []);
-      setTareas(data.tareas || []);
+      setClientes(latestBackupData.clientes || []);
+      setEmpleados(latestBackupData.empleados || []);
+      setEquipos(latestBackupData.equipos || []);
+      setTareas(latestBackupData.tareas || []);
       
-      // Guardar en localStorage
-      saveToStorage(STORAGE_KEYS.CLIENTES, data.clientes || []);
-      saveToStorage(STORAGE_KEYS.EMPLEADOS, data.empleados || []);
-      saveToStorage(STORAGE_KEYS.EQUIPOS, data.equipos || []);
-      saveToStorage(STORAGE_KEYS.TAREAS, data.tareas || []);
-      
-      return true;
+      // Guardar con sincronización
+      syncService.saveData(STORAGE_KEYS.CLIENTES, latestBackupData.clientes || []);
+      syncService.saveData(STORAGE_KEYS.EMPLEADOS, latestBackupData.empleados || []);
+      syncService.saveData(STORAGE_KEYS.EQUIPOS, latestBackupData.equipos || []);
+      syncService.saveData(STORAGE_KEYS.TAREAS, latestBackupData.tareas || []);
     } catch (error) {
       console.error('Error al restaurar datos:', error);
-      return false;
     }
   };
 
