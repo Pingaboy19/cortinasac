@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 
 interface Cliente {
   id: string;
@@ -101,80 +101,52 @@ const STORAGE_KEYS = {
 // Función para obtener timestamp actual
 const getTimestamp = () => new Date().toISOString();
 
-// Función para guardar datos en localStorage con un ID único para la aplicación
-const saveToStorage = (key: string, data: any) => {
-  try {
-    // Usar un ID de aplicación consistente para todos los dispositivos
-    const appId = 'cortinas-crm-app';
-    const fullKey = `${appId}_${key}`;
-    
-    localStorage.setItem(fullKey, JSON.stringify(data));
-    const timestamp = getTimestamp();
-    localStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
-    lastUpdateRef.current = timestamp;
-    
-    // Intentar sincronizar con sessionStorage para persistencia entre pestañas
-    try {
-      sessionStorage.setItem(fullKey, JSON.stringify(data));
-      sessionStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
-    } catch (e) {
-      console.warn('No se pudo sincronizar con sessionStorage', e);
-    }
-    
-    return true;
-  } catch (error) {
-    console.error(`Error al guardar ${key}:`, error);
-    return false;
-  }
-};
-
-// Función para cargar datos de localStorage con ID único
-const loadFromStorage = (key: string) => {
-  try {
-    const appId = 'cortinas-crm-app';
-    const fullKey = `${appId}_${key}`;
-    
-    const data = localStorage.getItem(fullKey);
-    if (data) {
-      return JSON.parse(data);
-    }
-    return null;
-  } catch (error) {
-    console.error(`Error al cargar ${key}:`, error);
-    return null;
-  }
-};
-
 export function CRMProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
-  // Usar una referencia para almacenar el último timestamp conocido
-  const lastUpdateRef = useRef<string>(getTimestamp());
-
-  // Función para verificar y cargar actualizaciones
-  const checkForUpdates = () => {
+  
+  // Constante para el ID de la aplicación
+  const APP_ID = 'cortinas-crm-app';
+  
+  // Función para guardar datos en localStorage con un ID único para la aplicación
+  const saveToStorage = (key: string, data: any) => {
     try {
-      const appId = 'cortinas-crm-app';
-      const storedLastUpdate = localStorage.getItem(`${appId}_LAST_UPDATE`);
+      const fullKey = `${APP_ID}_${key}`;
+      localStorage.setItem(fullKey, JSON.stringify(data));
       
-      if (storedLastUpdate && storedLastUpdate > lastUpdateRef.current) {
-        console.log('Actualizando datos desde localStorage...');
-        loadData();
-        lastUpdateRef.current = storedLastUpdate;
-      }
+      // Guardar timestamp de actualización
+      const timestamp = getTimestamp();
+      localStorage.setItem(`${APP_ID}_LAST_UPDATE`, timestamp);
+      
+      return true;
     } catch (error) {
-      console.error('Error al verificar actualizaciones:', error);
+      console.error(`Error al guardar ${key}:`, error);
+      return false;
+    }
+  };
+
+  // Función para cargar datos de localStorage con ID único
+  const loadFromStorage = (key: string) => {
+    try {
+      const fullKey = `${APP_ID}_${key}`;
+      const data = localStorage.getItem(fullKey);
+      
+      if (data) {
+        return JSON.parse(data);
+      }
+      return null;
+    } catch (error) {
+      console.error(`Error al cargar ${key}:`, error);
+      return null;
     }
   };
 
   // Cargar datos al iniciar
-  const loadData = () => {
+  const loadData = useCallback(() => {
     try {
-      const appId = 'cortinas-crm-app';
-      
       // Intentar cargar desde localStorage
       const clientesData = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
       const empleadosData = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
@@ -199,19 +171,22 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       });
       
       setTareas(tareasActualizadas);
-      
-      // Guardar el timestamp actual
-      const timestamp = getTimestamp();
-      localStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
-      lastUpdateRef.current = timestamp;
-      
       setDataLoaded(true);
       console.log('Datos cargados correctamente');
     } catch (error) {
       console.error('Error al cargar datos:', error);
       setDataLoaded(true); // Marcar como cargado incluso en caso de error
     }
-  };
+  }, []);
+
+  // Función para verificar y cargar actualizaciones
+  const checkForUpdates = useCallback(() => {
+    try {
+      loadData();
+    } catch (error) {
+      console.error('Error al verificar actualizaciones:', error);
+    }
+  }, [loadData]);
 
   // Efecto para sincronización periódica
   useEffect(() => {
@@ -219,39 +194,37 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     loadData();
     
     // Configurar intervalo de sincronización
-    const syncInterval = setInterval(checkForUpdates, 1000); // Verificar cada segundo
+    const syncInterval = setInterval(checkForUpdates, 5000); // Verificar cada 5 segundos
     
     // Evento para sincronización entre pestañas/dispositivos
     const handleStorageChange = (e: StorageEvent) => {
-      const appId = 'cortinas-crm-app';
-      if (e.key === `${appId}_LAST_UPDATE` || e.key?.startsWith(appId)) {
+      if (e.key?.startsWith(APP_ID)) {
         checkForUpdates();
       }
     };
-    
-    window.addEventListener('storage', handleStorageChange);
     
     // Evento para cuando la ventana obtiene el foco
     const handleFocus = () => {
       checkForUpdates();
     };
     
+    // Configurar listeners
+    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('focus', handleFocus);
-    
-    // Evento para cuando la aplicación se vuelve visible
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         checkForUpdates();
       }
     });
     
+    // Limpiar listeners
     return () => {
       clearInterval(syncInterval);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', () => {});
     };
-  }, []);
+  }, [loadData, checkForUpdates]);
 
   // Funciones para manipular datos
   const agregarCliente = (cliente: Omit<Cliente, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
@@ -362,59 +335,84 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   };
 
   const buscarClientePorNombre = (nombre: string) => {
-    if (!nombre.trim()) return clientes;
-    return clientes.filter(cliente => 
-      cliente.nombre.toLowerCase().includes(nombre.toLowerCase())
-    );
+    const termino = nombre.toLowerCase();
+    return clientes.filter(cliente => cliente.nombre.toLowerCase().includes(termino));
   };
 
   const agregarMiembroEquipo = (equipoId: string, empleadoId: string) => {
     // Verificar si el empleado ya está en otro equipo
-    const equipoActual = equipos.find(eq => 
-      eq.id !== equipoId && eq.members.includes(empleadoId)
-    );
-    
-    if (equipoActual) {
-      // Remover del equipo actual
-      setEquipos(prev => prev.map(eq => 
-        eq.id === equipoActual.id
-          ? { 
-              ...eq, 
+    const empleado = empleados.find(emp => emp.id === empleadoId);
+    if (empleado && empleado.equipo && empleado.equipo !== equipoId) {
+      // Remover del equipo anterior
+      const equipoAnterior = equipos.find(eq => eq.id === empleado.equipo);
+      if (equipoAnterior) {
+        const nuevosEquipos = equipos.map(eq => {
+          if (eq.id === equipoAnterior.id) {
+            return {
+              ...eq,
               members: eq.members.filter(id => id !== empleadoId),
               ultimaModificacion: getTimestamp()
-            }
-          : eq
-      ));
+            };
+          }
+          return eq;
+        });
+        setEquipos(nuevosEquipos);
+        saveToStorage(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+      }
     }
     
-    // Agregar al nuevo equipo
-    setEquipos(prev => prev.map(eq => 
-      eq.id === equipoId
-        ? { 
-            ...eq, 
-            members: [...eq.members, empleadoId],
-            ultimaModificacion: getTimestamp()
-          }
-        : eq
-    ));
+    // Actualizar el equipo del empleado
+    const nuevosEmpleados = empleados.map(emp => {
+      if (emp.id === empleadoId) {
+        return { ...emp, equipo: equipoId, ultimaModificacion: getTimestamp() };
+      }
+      return emp;
+    });
+    setEmpleados(nuevosEmpleados);
+    saveToStorage(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
     
-    // Actualizar el empleado
-    actualizarEmpleado(empleadoId, { equipo: equipoId });
+    // Agregar al nuevo equipo
+    const nuevosEquipos = equipos.map(eq => {
+      if (eq.id === equipoId) {
+        const miembrosActualizados = eq.members.includes(empleadoId)
+          ? eq.members
+          : [...eq.members, empleadoId];
+        return {
+          ...eq,
+          members: miembrosActualizados,
+          ultimaModificacion: getTimestamp()
+        };
+      }
+      return eq;
+    });
+    setEquipos(nuevosEquipos);
+    saveToStorage(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
   };
 
   const removerMiembroEquipo = (equipoId: string, empleadoId: string) => {
-    setEquipos(prev => prev.map(eq => 
-      eq.id === equipoId
-        ? { 
-            ...eq, 
-            members: eq.members.filter(id => id !== empleadoId),
-            ultimaModificacion: getTimestamp()
-          }
-        : eq
-    ));
+    // Actualizar el equipo
+    const nuevosEquipos = equipos.map(eq => {
+      if (eq.id === equipoId) {
+        return {
+          ...eq,
+          members: eq.members.filter(id => id !== empleadoId),
+          ultimaModificacion: getTimestamp()
+        };
+      }
+      return eq;
+    });
+    setEquipos(nuevosEquipos);
+    saveToStorage(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
     
     // Actualizar el empleado
-    actualizarEmpleado(empleadoId, { equipo: '' });
+    const nuevosEmpleados = empleados.map(emp => {
+      if (emp.id === empleadoId && emp.equipo === equipoId) {
+        return { ...emp, equipo: '', ultimaModificacion: getTimestamp() };
+      }
+      return emp;
+    });
+    setEmpleados(nuevosEmpleados);
+    saveToStorage(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
   };
 
   const obtenerMiembrosEquipo = (equipoId: string) => {
@@ -422,7 +420,6 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     return equipo ? equipo.members : [];
   };
 
-  // Función para respaldar todos los datos
   const respaldarDatos = () => {
     try {
       const timestamp = getTimestamp();
@@ -443,7 +440,6 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Función para restaurar desde el respaldo
   const restaurarDatos = () => {
     try {
       const backup = loadFromStorage(STORAGE_KEYS.BACKUP);

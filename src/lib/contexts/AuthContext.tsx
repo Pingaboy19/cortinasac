@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface User {
@@ -51,27 +51,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [empleadosRegistrados, setEmpleadosRegistrados] = useState<User[]>([]);
   const [empleadosConectados, setEmpleadosConectados] = useState<User[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<string>(new Date().toISOString());
+  
+  // Constante para el ID de la aplicación
+  const APP_ID = 'cortinas-crm-app';
 
   // Función para guardar datos en localStorage con un ID único para la aplicación
   const saveToStorage = (key: string, data: any) => {
     try {
-      // Usar un ID de aplicación consistente para todos los dispositivos
-      const appId = 'cortinas-crm-app';
-      const fullKey = `${appId}_${key}`;
-      
+      const fullKey = `${APP_ID}_${key}`;
       localStorage.setItem(fullKey, JSON.stringify(data));
-      const timestamp = new Date().toISOString();
-      localStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
-      setLastUpdate(timestamp);
       
-      // Intentar sincronizar con sessionStorage para persistencia entre pestañas
-      try {
-        sessionStorage.setItem(fullKey, JSON.stringify(data));
-        sessionStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
-      } catch (e) {
-        console.warn('No se pudo sincronizar con sessionStorage', e);
-      }
+      // Guardar timestamp de actualización
+      const timestamp = new Date().toISOString();
+      localStorage.setItem(`${APP_ID}_LAST_UPDATE`, timestamp);
       
       return true;
     } catch (error) {
@@ -83,10 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Función para cargar datos de localStorage con ID único
   const loadFromStorage = (key: string) => {
     try {
-      const appId = 'cortinas-crm-app';
-      const fullKey = `${appId}_${key}`;
-      
+      const fullKey = `${APP_ID}_${key}`;
       const data = localStorage.getItem(fullKey);
+      
       if (data) {
         return JSON.parse(data);
       }
@@ -97,27 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Función para verificar actualizaciones de empleados
-  const checkForUpdates = () => {
-    try {
-      const appId = 'cortinas-crm-app';
-      const storedLastUpdate = localStorage.getItem(`${appId}_LAST_UPDATE`);
-      
-      if (storedLastUpdate && storedLastUpdate > lastUpdate) {
-        console.log('Actualizando datos de empleados desde localStorage...');
-        loadData();
-        setLastUpdate(storedLastUpdate);
-      }
-    } catch (error) {
-      console.error('Error al verificar actualizaciones:', error);
-    }
-  };
-
   // Cargar datos al iniciar
-  const loadData = () => {
+  const loadData = useCallback(() => {
     try {
-      const appId = 'cortinas-crm-app';
-      
       // Intentar cargar desde localStorage
       const empleadosData = loadFromStorage('empleados') || [];
       
@@ -133,18 +106,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuthenticated(true);
       }
       
-      // Guardar el timestamp actual
-      const timestamp = new Date().toISOString();
-      localStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
-      setLastUpdate(timestamp);
-      
       setDataLoaded(true);
       console.log('Datos de autenticación cargados correctamente');
     } catch (error) {
       console.error('Error al cargar datos de autenticación:', error);
       setDataLoaded(true); // Marcar como cargado incluso en caso de error
     }
-  };
+  }, []);
+
+  // Función para verificar y cargar actualizaciones
+  const checkForUpdates = useCallback(() => {
+    try {
+      loadData();
+    } catch (error) {
+      console.error('Error al verificar actualizaciones:', error);
+    }
+  }, [loadData]);
 
   // Efecto para sincronización periódica
   useEffect(() => {
@@ -152,46 +129,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadData();
     
     // Configurar intervalo de sincronización
-    const syncInterval = setInterval(checkForUpdates, 1000); // Verificar cada segundo
+    const syncInterval = setInterval(checkForUpdates, 5000); // Verificar cada 5 segundos
     
     // Evento para sincronización entre pestañas/dispositivos
     const handleStorageChange = (e: StorageEvent) => {
-      const appId = 'cortinas-crm-app';
-      if (e.key === `${appId}_LAST_UPDATE` || e.key?.startsWith(appId)) {
+      if (e.key?.startsWith(APP_ID)) {
         checkForUpdates();
       }
     };
-    
-    window.addEventListener('storage', handleStorageChange);
     
     // Evento para cuando la ventana obtiene el foco
     const handleFocus = () => {
       checkForUpdates();
     };
     
+    // Configurar listeners
+    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('focus', handleFocus);
-    
-    // Evento para cuando la aplicación se vuelve visible
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         checkForUpdates();
       }
     });
     
+    // Limpiar listeners
     return () => {
       clearInterval(syncInterval);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', () => {});
     };
-  }, [lastUpdate]);
+  }, [loadData, checkForUpdates]);
 
   // Modificar registrarEmpleado para asegurar sincronización
   const registrarEmpleado = async (username: string, password: string): Promise<boolean> => {
     try {
-      // Verificar datos más recientes antes de registrar
-      checkForUpdates();
-      
       // Verificar si el usuario ya existe
       const empleadoExistente = empleadosRegistrados.find(emp => emp.username === username);
       if (empleadoExistente) {
@@ -226,9 +198,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Modificar login para asegurar sincronización
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      // Verificar datos más recientes antes de login
-      checkForUpdates();
-
       // Verificar credenciales de admin
       if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
         const adminUser: User = {
@@ -284,9 +253,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (user) {
         if (user.role === 'empleado') {
-          // Verificar datos más recientes antes de logout
-          checkForUpdates();
-          
           // Actualizar estado de conexión del empleado
           const updatedEmpleados = empleadosRegistrados.map(emp =>
             emp.id === user.id ? { ...emp, isConnected: false } : emp
@@ -297,14 +263,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setEmpleadosConectados(prev => prev.filter(u => u.id !== user.id));
         }
         
-        localStorage.removeItem(`cortinas-crm-app_currentUser`);
+        localStorage.removeItem(`${APP_ID}_currentUser`);
         setUser(null);
         setIsAuthenticated(false);
         router.push('/auth/login');
       }
     } catch (error) {
       console.error('Error en logout:', error);
-      localStorage.removeItem(`cortinas-crm-app_currentUser`);
+      localStorage.removeItem(`${APP_ID}_currentUser`);
       setUser(null);
       setIsAuthenticated(false);
       router.push('/auth/login');
@@ -314,9 +280,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Modificar eliminarEmpleado para asegurar sincronización
   const eliminarEmpleado = (id: string) => {
     try {
-      // Verificar datos más recientes antes de eliminar
-      checkForUpdates();
-      
       const nuevosEmpleados = empleadosRegistrados.filter(emp => emp.id !== id);
       const success = saveToStorage('empleados', nuevosEmpleados);
       
