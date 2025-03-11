@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 
 interface Cliente {
   id: string;
@@ -111,7 +111,7 @@ const saveToStorage = (key: string, data: any) => {
     localStorage.setItem(fullKey, JSON.stringify(data));
     const timestamp = getTimestamp();
     localStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
-    setLastUpdate(timestamp);
+    lastUpdateRef.current = timestamp;
     
     // Intentar sincronizar con sessionStorage para persistencia entre pestañas
     try {
@@ -151,7 +151,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<string>(getTimestamp());
+  // Usar una referencia para almacenar el último timestamp conocido
+  const lastUpdateRef = useRef<string>(getTimestamp());
 
   // Función para verificar y cargar actualizaciones
   const checkForUpdates = () => {
@@ -159,10 +160,10 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       const appId = 'cortinas-crm-app';
       const storedLastUpdate = localStorage.getItem(`${appId}_LAST_UPDATE`);
       
-      if (storedLastUpdate && storedLastUpdate > lastUpdate) {
+      if (storedLastUpdate && storedLastUpdate > lastUpdateRef.current) {
         console.log('Actualizando datos desde localStorage...');
         loadData();
-        setLastUpdate(storedLastUpdate);
+        lastUpdateRef.current = storedLastUpdate;
       }
     } catch (error) {
       console.error('Error al verificar actualizaciones:', error);
@@ -202,7 +203,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       // Guardar el timestamp actual
       const timestamp = getTimestamp();
       localStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
-      setLastUpdate(timestamp);
+      lastUpdateRef.current = timestamp;
       
       setDataLoaded(true);
       console.log('Datos cargados correctamente');
@@ -250,7 +251,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', () => {});
     };
-  }, [lastUpdate]);
+  }, []);
 
   // Funciones para manipular datos
   const agregarCliente = (cliente: Omit<Cliente, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
