@@ -4,6 +4,9 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useRouter } from 'next/navigation';
 import syncService from '@/lib/services/syncService';
 
+// Verificar si estamos en un entorno de navegador
+const isBrowser = typeof window !== 'undefined';
+
 // Claves para almacenamiento
 const STORAGE_KEYS = {
   CURRENT_USER: 'crm_current_user',
@@ -63,6 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Cargar estado inicial
   useEffect(() => {
+    // Solo ejecutar en el navegador
+    if (!isBrowser) return;
+    
     const loadData = () => {
       try {
         // Cargar usuario actual
@@ -108,7 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Configurar sincronización cuando los datos estén cargados
   useEffect(() => {
-    if (!dataLoaded || syncInitialized) return;
+    // Solo ejecutar en el navegador
+    if (!isBrowser || !dataLoaded || syncInitialized) return;
     
     // Configurar listener para cambios en localStorage (otras pestañas/ventanas)
     const removeStorageListener = syncService.setupStorageListener((key, newData) => {
@@ -156,7 +163,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuthenticated(true);
         
         // Guardar en localStorage
-        syncService.saveData(STORAGE_KEYS.CURRENT_USER, adminUser);
+        if (isBrowser) {
+          syncService.saveData(STORAGE_KEYS.CURRENT_USER, adminUser);
+        }
         
         return true;
       }
@@ -186,8 +195,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
         
         // Guardar con sincronización
-        syncService.saveData(STORAGE_KEYS.EMPLEADOS, updatedUsers);
-        syncService.saveData(STORAGE_KEYS.CURRENT_USER, empleadoUser);
+        if (isBrowser) {
+          syncService.saveData(STORAGE_KEYS.EMPLEADOS, updatedUsers);
+          syncService.saveData(STORAGE_KEYS.CURRENT_USER, empleadoUser);
+        }
         
         // Actualizar estados locales
         setEmpleadosRegistrados(updatedUsers);
@@ -215,7 +226,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
           
           // Guardar con sincronización
-          syncService.saveData(STORAGE_KEYS.EMPLEADOS, updatedEmpleados);
+          if (isBrowser) {
+            syncService.saveData(STORAGE_KEYS.EMPLEADOS, updatedEmpleados);
+          }
           
           // Actualizar estados locales
           setEmpleadosRegistrados(updatedEmpleados);
@@ -223,8 +236,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         
         // Limpiar sesión
-        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-        sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+        if (isBrowser) {
+          localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+          sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+        }
         setUser(null);
         setIsAuthenticated(false);
         router.push('/auth/login');
@@ -232,8 +247,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error en logout:', error);
       // Forzar logout en caso de error
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-      sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+      if (isBrowser) {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+        sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+      }
       setUser(null);
       setIsAuthenticated(false);
       router.push('/auth/login');
@@ -263,10 +280,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const updatedEmpleados = [...empleadosRegistrados, nuevoEmpleado];
       
       // Guardar con sincronización
-      syncService.saveData(STORAGE_KEYS.EMPLEADOS, updatedEmpleados);
-      
-      // Crear respaldo
-      syncService.saveData(STORAGE_KEYS.EMPLEADOS_BACKUP, updatedEmpleados);
+      if (isBrowser) {
+        syncService.saveData(STORAGE_KEYS.EMPLEADOS, updatedEmpleados);
+        
+        // Crear respaldo
+        syncService.saveData(STORAGE_KEYS.EMPLEADOS_BACKUP, updatedEmpleados);
+      }
       
       // Actualizar estado local
       setEmpleadosRegistrados(updatedEmpleados as User[]);
@@ -287,13 +306,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // Crear respaldo antes de eliminar
-      syncService.saveData(STORAGE_KEYS.EMPLEADOS_BACKUP, empleadosRegistrados);
+      if (isBrowser) {
+        syncService.saveData(STORAGE_KEYS.EMPLEADOS_BACKUP, empleadosRegistrados);
+      }
       
       // Actualizar la lista de empleados
       const updatedEmpleados = empleadosRegistrados.filter(emp => emp.id !== id);
       
       // Guardar con sincronización
-      syncService.saveData(STORAGE_KEYS.EMPLEADOS, updatedEmpleados);
+      if (isBrowser) {
+        syncService.saveData(STORAGE_KEYS.EMPLEADOS, updatedEmpleados);
+      }
       
       // Actualizar estados locales
       setEmpleadosRegistrados(updatedEmpleados);
@@ -302,10 +325,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error al eliminar empleado:', error);
       
       // Intentar restaurar desde el respaldo
-      const backup = syncService.loadData(STORAGE_KEYS.EMPLEADOS_BACKUP);
-      if (backup && Array.isArray(backup)) {
-        setEmpleadosRegistrados(backup as User[]);
-        syncService.saveData(STORAGE_KEYS.EMPLEADOS, backup);
+      if (isBrowser) {
+        const backup = syncService.loadData(STORAGE_KEYS.EMPLEADOS_BACKUP);
+        if (backup && Array.isArray(backup)) {
+          setEmpleadosRegistrados(backup as User[]);
+          syncService.saveData(STORAGE_KEYS.EMPLEADOS, backup);
+        }
       }
     }
   };

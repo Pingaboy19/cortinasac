@@ -4,6 +4,19 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useAuth } from './AuthContext';
 import syncService from '@/lib/services/syncService';
 
+// Verificar si estamos en un entorno de navegador
+const isBrowser = typeof window !== 'undefined';
+
+// Claves para almacenamiento
+const STORAGE_KEYS = {
+  CLIENTES: 'crm_clientes',
+  EMPLEADOS: 'crm_empleados',
+  EQUIPOS: 'crm_equipos',
+  TAREAS: 'crm_tareas',
+  BACKUP: 'crm_backup'
+};
+
+// Interfaces para los tipos de datos
 interface Cliente {
   id: string;
   nombre: string;
@@ -49,6 +62,7 @@ export interface Tarea {
   ultimaModificacion: string;
 }
 
+// Tipo del contexto
 export interface CRMContextType {
   clientes: Cliente[];
   empleados: Empleado[];
@@ -70,6 +84,7 @@ export interface CRMContextType {
   restaurarDatos: () => void;
 }
 
+// Crear el contexto
 export const CRMContext = createContext<CRMContextType>({
   clientes: [],
   empleados: [],
@@ -91,14 +106,6 @@ export const CRMContext = createContext<CRMContextType>({
   restaurarDatos: () => {}
 });
 
-const STORAGE_KEYS = {
-  CLIENTES: 'crm_clientes',
-  EMPLEADOS: 'crm_empleados',
-  EQUIPOS: 'crm_equipos',
-  TAREAS: 'crm_tareas',
-  BACKUP: 'crm_backup'
-};
-
 // Función para obtener timestamp actual
 const getTimestamp = () => new Date().toISOString();
 
@@ -115,6 +122,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   // Cargar datos al iniciar
   useEffect(() => {
+    // Solo ejecutar en el navegador
+    if (!isBrowser) return;
+    
     const loadData = () => {
       try {
         // Cargar datos desde localStorage a través del servicio de sincronización
@@ -158,7 +168,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   // Configurar sincronización cuando los datos estén cargados
   useEffect(() => {
-    if (!dataLoaded || syncInitialized) return;
+    // Solo ejecutar en el navegador
+    if (!isBrowser || !dataLoaded || syncInitialized) return;
     
     // Configurar listener para cambios en localStorage (otras pestañas/ventanas)
     const removeStorageListener = syncService.setupStorageListener((key, newData) => {
@@ -221,7 +232,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   // Configurar intervalo para verificar y actualizar tareas pendientes
   useEffect(() => {
-    if (!dataLoaded) return;
+    // Solo ejecutar en el navegador
+    if (!isBrowser || !dataLoaded) return;
     
     const interval = setInterval(() => {
       const hoy = new Date().toISOString().split('T')[0];
@@ -259,7 +271,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setClientes(nuevosClientes);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.CLIENTES, nuevosClientes);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.CLIENTES, nuevosClientes);
+    }
   };
 
   const agregarEmpleado = (empleado: Omit<Empleado, 'id' | 'fechaCreacion' | 'ultimaModificacion' | 'ultimaComision'>) => {
@@ -276,7 +290,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEmpleados(nuevosEmpleados);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
+    }
   };
 
   const agregarEquipo = (equipo: Omit<Equipo, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
@@ -292,7 +308,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+    }
   };
 
   const agregarTarea = (tarea: Omit<Tarea, 'id' | 'estado' | 'observaciones' | 'fechaCreacion' | 'ultimaModificacion'>) => {
@@ -310,7 +328,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setTareas(nuevasTareas);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
+    }
   };
 
   const actualizarEmpleado = (id: string, datos: Partial<Empleado>) => {
@@ -323,7 +343,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEmpleados(nuevosEmpleados);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
+    }
   };
 
   const actualizarTarea = (id: string, datos: Partial<Tarea>) => {
@@ -336,7 +358,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setTareas(nuevasTareas);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
+    }
   };
 
   const eliminarEquipo = (id: string) => {
@@ -353,7 +377,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       setEmpleados(nuevosEmpleados);
       
       // Guardar con sincronización
-      syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
+      if (isBrowser) {
+        syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
+      }
     }
     
     // Eliminar el equipo
@@ -361,7 +387,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+    }
   };
 
   const eliminarTarea = (id: string) => {
@@ -369,7 +397,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setTareas(nuevasTareas);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
+    }
   };
 
   const buscarClientePorNombre = (nombre: string) => {
@@ -414,7 +444,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+    }
     
     // Actualizar el empleado
     actualizarEmpleado(empleadoId, { equipo: equipoId });
@@ -434,7 +466,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+    if (isBrowser) {
+      syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
+    }
     
     // Actualizar el empleado
     actualizarEmpleado(empleadoId, { equipo: '' });
@@ -447,6 +481,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   // Función para respaldar todos los datos
   const respaldarDatos = () => {
+    if (!isBrowser) return;
+    
     try {
       const timestamp = new Date().toISOString().replace(/:/g, '-');
       const backup = {
@@ -461,13 +497,15 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       syncService.saveData(`${STORAGE_KEYS.BACKUP}_${timestamp}`, backup);
       
       // Mantener solo los últimos 5 backups
-      const keys = Object.keys(localStorage)
-        .filter(key => key.startsWith(`${STORAGE_KEYS.BACKUP}_`))
-        .sort()
-        .reverse();
-      
-      if (keys.length > 5) {
-        keys.slice(5).forEach(key => localStorage.removeItem(key));
+      if (isBrowser) {
+        const keys = Object.keys(localStorage)
+          .filter(key => key.startsWith(`${STORAGE_KEYS.BACKUP}_`))
+          .sort()
+          .reverse();
+        
+        if (keys.length > 5) {
+          keys.slice(5).forEach(key => localStorage.removeItem(key));
+        }
       }
     } catch (error) {
       console.error('Error al respaldar datos:', error);
@@ -476,6 +514,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   // Función para restaurar desde un respaldo
   const restaurarDatos = () => {
+    if (!isBrowser) return;
+    
     try {
       // Obtener la lista de backups disponibles
       const keys = Object.keys(localStorage)

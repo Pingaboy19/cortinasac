@@ -3,6 +3,9 @@
  * Utiliza localStorage con un mecanismo de timestamp para detectar cambios
  */
 
+// Verificar si estamos en un entorno de navegador
+const isBrowser = typeof window !== 'undefined';
+
 // Tipos de datos para sincronización
 export interface SyncData {
   data: any;
@@ -12,6 +15,8 @@ export interface SyncData {
 
 // Generar un ID único para este dispositivo
 const generateDeviceId = () => {
+  if (!isBrowser) return 'server';
+  
   let deviceId = localStorage.getItem('device_id');
   if (!deviceId) {
     deviceId = `device_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -21,13 +26,15 @@ const generateDeviceId = () => {
 };
 
 // ID único para este dispositivo
-const DEVICE_ID = generateDeviceId();
+const DEVICE_ID = isBrowser ? generateDeviceId() : 'server';
 
 // Intervalo de sincronización (en milisegundos)
 const SYNC_INTERVAL = 5000; // 5 segundos
 
 // Función para guardar datos con timestamp
 export const saveData = (key: string, data: any): void => {
+  if (!isBrowser) return;
+  
   try {
     const syncData: SyncData = {
       data,
@@ -65,6 +72,8 @@ export const saveData = (key: string, data: any): void => {
 
 // Función para cargar datos
 export const loadData = (key: string): any => {
+  if (!isBrowser) return null;
+  
   try {
     // Intentar cargar desde sessionStorage primero (más rápido)
     const sessionData = sessionStorage.getItem(key);
@@ -111,6 +120,8 @@ export const loadData = (key: string): any => {
 
 // Función para verificar si hay datos más recientes
 export const checkForUpdates = (key: string, currentTimestamp: number): boolean => {
+  if (!isBrowser) return false;
+  
   try {
     const storedData = localStorage.getItem(key);
     if (storedData) {
@@ -126,6 +137,8 @@ export const checkForUpdates = (key: string, currentTimestamp: number): boolean 
 
 // Función para obtener el timestamp actual de los datos
 export const getDataTimestamp = (key: string): number => {
+  if (!isBrowser) return 0;
+  
   try {
     const storedData = localStorage.getItem(key);
     if (storedData) {
@@ -141,6 +154,8 @@ export const getDataTimestamp = (key: string): number => {
 
 // Configurar listener para eventos de almacenamiento (cuando cambia en otra pestaña)
 export const setupStorageListener = (callback: (key: string, newData: any) => void): () => void => {
+  if (!isBrowser) return () => {};
+  
   const handleStorageChange = (event: StorageEvent) => {
     if (event.key && event.newValue) {
       try {
@@ -179,6 +194,8 @@ export const startPeriodicSync = (
   keys: string[],
   onDataUpdated: (key: string, data: any) => void
 ): () => void => {
+  if (!isBrowser) return () => {};
+  
   // Almacenar los últimos timestamps conocidos
   const lastKnownTimestamps: Record<string, number> = {};
   keys.forEach(key => {
@@ -214,7 +231,8 @@ export const startPeriodicSync = (
   };
 };
 
-export default {
+// Exportar un objeto con todas las funciones
+const syncService = {
   saveData,
   loadData,
   checkForUpdates,
@@ -222,4 +240,6 @@ export default {
   setupStorageListener,
   startPeriodicSync,
   DEVICE_ID
-}; 
+};
+
+export default syncService; 
