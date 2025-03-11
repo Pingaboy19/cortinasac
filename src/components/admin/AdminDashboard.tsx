@@ -63,7 +63,7 @@ export default function AdminDashboard() {
     },
     {
       name: 'Tareas Pendientes',
-      value: tareas.filter((t: Tarea) => t.estado === 'pendiente').length,
+      value: tareas.filter((t) => t.estado === 'pendiente').length,
       href: '/dashboard/tareas',
       icon: '📝'
     },
