@@ -51,39 +51,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [empleadosRegistrados, setEmpleadosRegistrados] = useState<User[]>([]);
   const [empleadosConectados, setEmpleadosConectados] = useState<User[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<string>(new Date().toISOString());
+
+  // Función para verificar actualizaciones de empleados
+  const checkForUpdates = () => {
+    try {
+      const storedLastUpdate = localStorage.getItem('auth_last_update');
+      
+      if (storedLastUpdate && storedLastUpdate > lastUpdate) {
+        // Hay datos más recientes en localStorage
+        const empleadosData = loadFromStorage('empleados');
+        if (empleadosData) {
+          setEmpleadosRegistrados(empleadosData);
+          const conectados = empleadosData.filter((emp: User) => emp.isConnected);
+          setEmpleadosConectados(conectados);
+          setLastUpdate(storedLastUpdate);
+        }
+      }
+    } catch (error) {
+      console.error('Error al verificar actualizaciones:', error);
+    }
+  };
+
+  // Efecto para sincronización periódica
+  useEffect(() => {
+    const syncInterval = setInterval(checkForUpdates, 2000); // Verificar cada 2 segundos
+    
+    // Evento para sincronización entre pestañas/dispositivos
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'auth_last_update' || e.key === 'empleados') {
+        checkForUpdates();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      clearInterval(syncInterval);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [lastUpdate]);
 
   // Función para guardar datos con respaldo
   const saveToStorage = (key: string, data: any) => {
     try {
-      // Crear una copia de seguridad antes de sobrescribir
-      const existingData = localStorage.getItem(key);
-      if (existingData) {
-        localStorage.setItem(`${key}_backup`, existingData);
-      }
-      
-      // Guardar los nuevos datos
       localStorage.setItem(key, JSON.stringify(data));
-      
-      // Guardar timestamp de la última actualización
-      localStorage.setItem(`${key}_lastUpdate`, new Date().toISOString());
-      
+      const timestamp = new Date().toISOString();
+      localStorage.setItem('auth_last_update', timestamp);
+      setLastUpdate(timestamp);
       return true;
     } catch (error) {
       console.error(`Error al guardar ${key}:`, error);
-      
-      // Intentar guardar en formato más pequeño si es un error de cuota
-      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-        try {
-          // Eliminar backups antiguos para liberar espacio
-          localStorage.removeItem(`${key}_backup`);
-          localStorage.setItem(key, JSON.stringify(data));
-          return true;
-        } catch (e) {
-          console.error(`Error al guardar ${key} después de liberar espacio:`, e);
-          return false;
-        }
-      }
-      
       return false;
     }
   };
@@ -211,6 +229,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
+      // Verificar datos más recientes antes de login
+      checkForUpdates();
+
       // Verificar credenciales de admin
       if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
         const adminUser: User = {
@@ -226,39 +247,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return true;
       }
 
-      // Verificar empleados
+      // Verificar empleados con datos actualizados
       const foundUser = empleadosRegistrados.find(u => 
         u.username === username && (u as any).password === password
       );
 
       if (foundUser) {
         const empleadoUser: User = {
-          id: foundUser.id,
-          username: foundUser.username,
-          role: 'empleado',
-          equipoId: foundUser.equipoId,
+          ...foundUser,
           isConnected: true,
-          lastLogin: new Date().toISOString(),
-          createdAt: foundUser.createdAt
+          lastLogin: new Date().toISOString()
         };
 
-        // Actualizar usuario en localStorage
+        // Actualizar estado de conexión
         const updatedUsers = empleadosRegistrados.map(u => 
-          u.id === foundUser.id 
-            ? { ...u, isConnected: true, lastLogin: empleadoUser.lastLogin }
-            : u
+          u.id === foundUser.id ? { ...u, isConnected: true, lastLogin: empleadoUser.lastLogin } : u
         );
         
-        setEmpleadosRegistrados(updatedUsers);
-        setEmpleadosConectados(prev => [...prev.filter(u => u.id !== empleadoUser.id), empleadoUser]);
-        
-        saveToStorage('empleados', updatedUsers);
-        saveToStorage('currentUser', empleadoUser);
-
-        setUser(empleadoUser);
-        setIsAuthenticated(true);
-
-        return true;
+        const success = saveToStorage('empleados', updatedUsers);
+        if (success) {
+          setEmpleadosRegistrados(updatedUsers);
+          setEmpleadosConectados(prev => [...prev.filter(u => u.id !== empleadoUser.id), empleadoUser]);
+          setUser(empleadoUser);
+          setIsAuthenticated(true);
+          saveToStorage('currentUser', empleadoUser);
+          return true;
+        }
       }
 
       return false;
@@ -272,16 +286,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (user) {
         if (user.role === 'empleado') {
+          // Verificar datos más recientes antes de logout
+          checkForUpdates();
+          
           // Actualizar estado de conexión del empleado
           const updatedEmpleados = empleadosRegistrados.map(emp =>
             emp.id === user.id ? { ...emp, isConnected: false } : emp
           );
+          
           saveToStorage('empleados', updatedEmpleados);
           setEmpleadosRegistrados(updatedEmpleados);
           setEmpleadosConectados(prev => prev.filter(u => u.id !== user.id));
         }
         
-        // Limpiar sesión
         localStorage.removeItem('currentUser');
         setUser(null);
         setIsAuthenticated(false);
@@ -289,7 +306,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Error en logout:', error);
-      // Forzar logout en caso de error
       localStorage.removeItem('currentUser');
       setUser(null);
       setIsAuthenticated(false);
@@ -299,6 +315,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registrarEmpleado = async (username: string, password: string): Promise<boolean> => {
     try {
+      // Verificar datos más recientes antes de registrar
+      checkForUpdates();
+      
       // Verificar si el usuario ya existe
       const empleadoExistente = empleadosRegistrados.find(emp => emp.username === username);
       if (empleadoExistente) {
@@ -309,7 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const nuevoEmpleado: User & { password: string } = {
         id: `empleado_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         username,
-        password, // Guardar contraseña para autenticación
+        password,
         role: 'empleado',
         isConnected: false,
         createdAt: timestamp
@@ -317,13 +336,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const updatedEmpleados = [...empleadosRegistrados, nuevoEmpleado];
       
-      // Guardar con respaldo
-      saveToStorage('empleados', updatedEmpleados);
-      saveToStorage('empleados_backup', updatedEmpleados);
-      
-      setEmpleadosRegistrados(updatedEmpleados as User[]);
-
-      return true;
+      // Guardar con nuevo timestamp
+      const success = saveToStorage('empleados', updatedEmpleados);
+      if (success) {
+        setEmpleadosRegistrados(updatedEmpleados);
+        return true;
+      }
+      return false;
     } catch (error) {
       console.error('Error al registrar empleado:', error);
       return false;
