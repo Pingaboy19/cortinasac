@@ -36,7 +36,7 @@ export interface Tarea {
   id: string;
   titulo: string;
   descripcion: string;
-  estado: 'pendiente' | 'completada';
+  estado: 'pendiente' | 'completada' | 'vencida';
   equipoId: string;
   comision: number;
   fecha: string;
@@ -101,12 +101,26 @@ const STORAGE_KEYS = {
 // Función para obtener timestamp actual
 const getTimestamp = () => new Date().toISOString();
 
-// Función para guardar datos en localStorage con manejo de errores
+// Función para guardar datos en localStorage con un ID único para la aplicación
 const saveToStorage = (key: string, data: any) => {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    // Usar un ID de aplicación consistente para todos los dispositivos
+    const appId = 'cortinas-crm-app';
+    const fullKey = `${appId}_${key}`;
+    
+    localStorage.setItem(fullKey, JSON.stringify(data));
     const timestamp = getTimestamp();
-    localStorage.setItem(STORAGE_KEYS.LAST_UPDATE, timestamp);
+    localStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
+    setLastUpdate(timestamp);
+    
+    // Intentar sincronizar con sessionStorage para persistencia entre pestañas
+    try {
+      sessionStorage.setItem(fullKey, JSON.stringify(data));
+      sessionStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
+    } catch (e) {
+      console.warn('No se pudo sincronizar con sessionStorage', e);
+    }
+    
     return true;
   } catch (error) {
     console.error(`Error al guardar ${key}:`, error);
@@ -114,37 +128,19 @@ const saveToStorage = (key: string, data: any) => {
   }
 };
 
-// Función para cargar datos de localStorage con manejo de errores
+// Función para cargar datos de localStorage con ID único
 const loadFromStorage = (key: string) => {
   try {
-    const data = localStorage.getItem(key);
+    const appId = 'cortinas-crm-app';
+    const fullKey = `${appId}_${key}`;
     
+    const data = localStorage.getItem(fullKey);
     if (data) {
       return JSON.parse(data);
     }
-    
-    // Si no hay datos, intentar cargar desde la copia de seguridad
-    const backup = localStorage.getItem(`${key}_backup`);
-    if (backup) {
-      console.warn(`Cargando ${key} desde copia de seguridad`);
-      return JSON.parse(backup);
-    }
-    
     return null;
   } catch (error) {
     console.error(`Error al cargar ${key}:`, error);
-    
-    // Intentar cargar desde la copia de seguridad
-    try {
-      const backup = localStorage.getItem(`${key}_backup`);
-      if (backup) {
-        console.warn(`Cargando ${key} desde copia de seguridad después de error`);
-        return JSON.parse(backup);
-      }
-    } catch (e) {
-      console.error(`Error al cargar copia de seguridad de ${key}:`, e);
-    }
-    
     return null;
   }
 };
@@ -160,19 +156,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   // Función para verificar y cargar actualizaciones
   const checkForUpdates = () => {
     try {
-      const storedLastUpdate = localStorage.getItem(STORAGE_KEYS.LAST_UPDATE);
+      const appId = 'cortinas-crm-app';
+      const storedLastUpdate = localStorage.getItem(`${appId}_LAST_UPDATE`);
       
       if (storedLastUpdate && storedLastUpdate > lastUpdate) {
-        // Hay datos más recientes en localStorage
-        const clientesData = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
-        const empleadosData = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
-        const equiposData = loadFromStorage(STORAGE_KEYS.EQUIPOS) || [];
-        const tareasData = loadFromStorage(STORAGE_KEYS.TAREAS) || [];
-        
-        setClientes(clientesData);
-        setEmpleados(empleadosData);
-        setEquipos(equiposData);
-        setTareas(tareasData);
+        console.log('Actualizando datos desde localStorage...');
+        loadData();
         setLastUpdate(storedLastUpdate);
       }
     } catch (error) {
@@ -180,209 +169,195 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Cargar datos al iniciar
+  const loadData = () => {
+    try {
+      const appId = 'cortinas-crm-app';
+      
+      // Intentar cargar desde localStorage
+      const clientesData = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
+      const empleadosData = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
+      const equiposData = loadFromStorage(STORAGE_KEYS.EQUIPOS) || [];
+      const tareasData = loadFromStorage(STORAGE_KEYS.TAREAS) || [];
+      
+      // Actualizar estado
+      setClientes(clientesData);
+      setEmpleados(empleadosData);
+      setEquipos(equiposData);
+      
+      // Actualizar estado de tareas y verificar vencidas
+      const tareasActualizadas = tareasData.map((tarea: Tarea) => {
+        // Verificar si la tarea está vencida
+        const fechaTarea = new Date(tarea.fecha);
+        const hoy = new Date();
+        
+        if (tarea.estado === 'pendiente' && fechaTarea < hoy) {
+          return { ...tarea, estado: 'vencida' };
+        }
+        return tarea;
+      });
+      
+      setTareas(tareasActualizadas);
+      
+      // Guardar el timestamp actual
+      const timestamp = getTimestamp();
+      localStorage.setItem(`${appId}_LAST_UPDATE`, timestamp);
+      setLastUpdate(timestamp);
+      
+      setDataLoaded(true);
+      console.log('Datos cargados correctamente');
+    } catch (error) {
+      console.error('Error al cargar datos:', error);
+      setDataLoaded(true); // Marcar como cargado incluso en caso de error
+    }
+  };
+
   // Efecto para sincronización periódica
   useEffect(() => {
-    const syncInterval = setInterval(checkForUpdates, 2000); // Verificar cada 2 segundos
+    // Cargar datos iniciales
+    loadData();
     
-    // Evento para sincronización entre pestañas
+    // Configurar intervalo de sincronización
+    const syncInterval = setInterval(checkForUpdates, 1000); // Verificar cada segundo
+    
+    // Evento para sincronización entre pestañas/dispositivos
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEYS.LAST_UPDATE) {
+      const appId = 'cortinas-crm-app';
+      if (e.key === `${appId}_LAST_UPDATE` || e.key?.startsWith(appId)) {
         checkForUpdates();
       }
     };
     
     window.addEventListener('storage', handleStorageChange);
     
+    // Evento para cuando la ventana obtiene el foco
+    const handleFocus = () => {
+      checkForUpdates();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    // Evento para cuando la aplicación se vuelve visible
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        checkForUpdates();
+      }
+    });
+    
     return () => {
       clearInterval(syncInterval);
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', () => {});
     };
   }, [lastUpdate]);
-
-  // Cargar datos al iniciar
-  useEffect(() => {
-    const loadData = () => {
-      try {
-        // Cargar datos desde localStorage
-        const clientesData = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
-        const empleadosData = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
-        const equiposData = loadFromStorage(STORAGE_KEYS.EQUIPOS) || [];
-        const tareasData = loadFromStorage(STORAGE_KEYS.TAREAS) || [];
-        
-        // Actualizar estados
-        setClientes(clientesData);
-        setEmpleados(empleadosData);
-        setEquipos(equiposData);
-        
-        // Actualizar estado de tareas (mover vencidas a pendientes)
-        const hoy = new Date().toISOString().split('T')[0];
-        const tareasActualizadas = tareasData.map((tarea: Tarea) => {
-          if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
-            return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
-          }
-          return tarea;
-        });
-        
-        setTareas(tareasActualizadas);
-        
-        // Si se actualizaron las tareas, guardar los cambios
-        if (JSON.stringify(tareasData) !== JSON.stringify(tareasActualizadas)) {
-          saveToStorage(STORAGE_KEYS.TAREAS, tareasActualizadas);
-        }
-        
-        setDataLoaded(true);
-      } catch (error) {
-        console.error('Error al cargar datos:', error);
-        
-        // Intentar cargar desde copias de seguridad
-        const clientesBackup = loadFromStorage(STORAGE_KEYS.CLIENTES) || [];
-        const empleadosBackup = loadFromStorage(STORAGE_KEYS.EMPLEADOS) || [];
-        const equiposBackup = loadFromStorage(STORAGE_KEYS.EQUIPOS) || [];
-        const tareasBackup = loadFromStorage(STORAGE_KEYS.TAREAS) || [];
-        
-        setClientes(clientesBackup);
-        setEmpleados(empleadosBackup);
-        setEquipos(equiposBackup);
-        setTareas(tareasBackup);
-        
-        setDataLoaded(true);
-      }
-    };
-    
-    loadData();
-    
-    // Configurar intervalo para verificar y actualizar tareas pendientes
-    const interval = setInterval(() => {
-      if (dataLoaded) {
-        const hoy = new Date().toISOString().split('T')[0];
-        setTareas(prevTareas => {
-          const tareasActualizadas = prevTareas.map(tarea => {
-            if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
-              return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
-            }
-            return tarea;
-          });
-          
-          // Guardar solo si hay cambios
-          if (JSON.stringify(prevTareas) !== JSON.stringify(tareasActualizadas)) {
-            saveToStorage(STORAGE_KEYS.TAREAS, tareasActualizadas);
-          }
-          
-          return tareasActualizadas;
-        });
-      }
-    }, 3600000); // Verificar cada hora
-    
-    return () => clearInterval(interval);
-  }, [dataLoaded]);
-
-  // Guardar datos cuando cambien
-  useEffect(() => {
-    if (dataLoaded) {
-      saveToStorage(STORAGE_KEYS.CLIENTES, clientes);
-    }
-  }, [clientes, dataLoaded]);
-  
-  useEffect(() => {
-    if (dataLoaded) {
-      saveToStorage(STORAGE_KEYS.EMPLEADOS, empleados);
-    }
-  }, [empleados, dataLoaded]);
-  
-  useEffect(() => {
-    if (dataLoaded) {
-      saveToStorage(STORAGE_KEYS.EQUIPOS, equipos);
-    }
-  }, [equipos, dataLoaded]);
-  
-  useEffect(() => {
-    if (dataLoaded) {
-      saveToStorage(STORAGE_KEYS.TAREAS, tareas);
-    }
-  }, [tareas, dataLoaded]);
 
   // Funciones para manipular datos
   const agregarCliente = (cliente: Omit<Cliente, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
     const timestamp = getTimestamp();
     const nuevoCliente: Cliente = {
+      id: `cliente_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       ...cliente,
-      id: `cliente_${Date.now()}`,
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
     };
-    setClientes(prev => [...prev, nuevoCliente]);
+    
+    const nuevosClientes = [...clientes, nuevoCliente];
+    setClientes(nuevosClientes);
+    saveToStorage(STORAGE_KEYS.CLIENTES, nuevosClientes);
   };
 
   const agregarEmpleado = (empleado: Omit<Empleado, 'id' | 'fechaCreacion' | 'ultimaModificacion' | 'ultimaComision'>) => {
     const timestamp = getTimestamp();
     const nuevoEmpleado: Empleado = {
+      id: `empleado_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       ...empleado,
-      id: `empleado_${Date.now()}`,
       ultimaComision: timestamp,
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
     };
-    setEmpleados(prev => [...prev, nuevoEmpleado]);
+    
+    const nuevosEmpleados = [...empleados, nuevoEmpleado];
+    setEmpleados(nuevosEmpleados);
+    saveToStorage(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
   };
 
   const agregarEquipo = (equipo: Omit<Equipo, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
     const timestamp = getTimestamp();
     const nuevoEquipo: Equipo = {
+      id: `equipo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       ...equipo,
-      id: `equipo_${Date.now()}`,
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
     };
-    setEquipos(prev => [...prev, nuevoEquipo]);
+    
+    const nuevosEquipos = [...equipos, nuevoEquipo];
+    setEquipos(nuevosEquipos);
+    saveToStorage(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
   };
 
   const agregarTarea = (tarea: Omit<Tarea, 'id' | 'estado' | 'observaciones' | 'fechaCreacion' | 'ultimaModificacion'>) => {
     const timestamp = getTimestamp();
     const nuevaTarea: Tarea = {
+      id: `tarea_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       ...tarea,
-      id: `tarea_${Date.now()}`,
       estado: 'pendiente',
       observaciones: '',
       fechaCreacion: timestamp,
       ultimaModificacion: timestamp
     };
-    setTareas(prev => [...prev, nuevaTarea]);
+    
+    const nuevasTareas = [...tareas, nuevaTarea];
+    setTareas(nuevasTareas);
+    saveToStorage(STORAGE_KEYS.TAREAS, nuevasTareas);
   };
 
   const actualizarEmpleado = (id: string, datos: Partial<Empleado>) => {
-    setEmpleados(prev => prev.map(empleado => 
-      empleado.id === id 
-        ? { ...empleado, ...datos, ultimaModificacion: getTimestamp() } 
-        : empleado
-    ));
+    const timestamp = getTimestamp();
+    const nuevosEmpleados = empleados.map(emp => 
+      emp.id === id ? { ...emp, ...datos, ultimaModificacion: timestamp } : emp
+    );
+    
+    setEmpleados(nuevosEmpleados);
+    saveToStorage(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
   };
 
   const actualizarTarea = (id: string, datos: Partial<Tarea>) => {
-    setTareas(prev => prev.map(tarea => 
-      tarea.id === id 
-        ? { ...tarea, ...datos, ultimaModificacion: getTimestamp() } 
-        : tarea
-    ));
+    const timestamp = getTimestamp();
+    const nuevasTareas = tareas.map(tarea => 
+      tarea.id === id ? { ...tarea, ...datos, ultimaModificacion: timestamp } : tarea
+    );
+    
+    setTareas(nuevasTareas);
+    saveToStorage(STORAGE_KEYS.TAREAS, nuevasTareas);
   };
 
   const eliminarEquipo = (id: string) => {
-    // Obtener miembros del equipo antes de eliminarlo
-    const equipo = equipos.find(eq => eq.id === id);
-    if (equipo) {
-      // Actualizar empleados para quitar la referencia al equipo eliminado
-      setEmpleados(prev => prev.map(empleado => 
-        equipo.members.includes(empleado.id)
-          ? { ...empleado, equipo: '', ultimaModificacion: getTimestamp() }
-          : empleado
-      ));
+    // Verificar si hay empleados en el equipo
+    const equipoAEliminar = equipos.find(eq => eq.id === id);
+    if (equipoAEliminar && equipoAEliminar.members.length > 0) {
+      // Actualizar empleados para quitar la referencia al equipo
+      const nuevosEmpleados = empleados.map(emp => {
+        if (equipoAEliminar.members.includes(emp.id)) {
+          return { ...emp, equipo: '', ultimaModificacion: getTimestamp() };
+        }
+        return emp;
+      });
+      
+      setEmpleados(nuevosEmpleados);
+      saveToStorage(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
     }
     
     // Eliminar el equipo
-    setEquipos(prev => prev.filter(equipo => equipo.id !== id));
+    const nuevosEquipos = equipos.filter(eq => eq.id !== id);
+    setEquipos(nuevosEquipos);
+    saveToStorage(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
   };
 
   const eliminarTarea = (id: string) => {
-    setTareas(prev => prev.filter(tarea => tarea.id !== id));
+    const nuevasTareas = tareas.filter(tarea => tarea.id !== id);
+    setTareas(nuevasTareas);
+    saveToStorage(STORAGE_KEYS.TAREAS, nuevasTareas);
   };
 
   const buscarClientePorNombre = (nombre: string) => {
@@ -449,7 +424,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   // Función para respaldar todos los datos
   const respaldarDatos = () => {
     try {
-      const timestamp = new Date().toISOString().replace(/:/g, '-');
+      const timestamp = getTimestamp();
       const backup = {
         clientes,
         empleados,
@@ -458,59 +433,36 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         timestamp
       };
       
-      // Guardar en localStorage con nombre único
-      localStorage.setItem(`backup_${timestamp}`, JSON.stringify(backup));
-      
-      // Mantener solo los últimos 5 backups
-      const keys = Object.keys(localStorage).filter(key => key.startsWith('backup_'));
-      keys.sort().reverse();
-      
-      if (keys.length > 5) {
-        keys.slice(5).forEach(key => localStorage.removeItem(key));
-      }
-      
+      saveToStorage(STORAGE_KEYS.BACKUP, backup);
+      console.log('Respaldo creado correctamente');
       return true;
     } catch (error) {
-      console.error('Error al respaldar datos:', error);
+      console.error('Error al crear respaldo:', error);
       return false;
     }
   };
 
-  // Función para restaurar desde un respaldo
+  // Función para restaurar desde el respaldo
   const restaurarDatos = () => {
     try {
-      // Obtener la lista de backups disponibles
-      const keys = Object.keys(localStorage)
-        .filter(key => key.startsWith('backup_'))
-        .sort()
-        .reverse();
-      
-      if (keys.length === 0) {
-        console.warn('No hay respaldos disponibles');
+      const backup = loadFromStorage(STORAGE_KEYS.BACKUP);
+      if (!backup) {
+        console.error('No hay respaldo disponible');
         return false;
       }
       
-      // Cargar el respaldo más reciente
-      const latestBackup = localStorage.getItem(keys[0]);
-      if (!latestBackup) {
-        console.warn('Respaldo no encontrado');
-        return false;
-      }
+      setClientes(backup.clientes || []);
+      setEmpleados(backup.empleados || []);
+      setEquipos(backup.equipos || []);
+      setTareas(backup.tareas || []);
       
-      const data = JSON.parse(latestBackup);
+      // Guardar los datos restaurados
+      saveToStorage(STORAGE_KEYS.CLIENTES, backup.clientes || []);
+      saveToStorage(STORAGE_KEYS.EMPLEADOS, backup.empleados || []);
+      saveToStorage(STORAGE_KEYS.EQUIPOS, backup.equipos || []);
+      saveToStorage(STORAGE_KEYS.TAREAS, backup.tareas || []);
       
-      // Actualizar estados
-      setClientes(data.clientes || []);
-      setEmpleados(data.empleados || []);
-      setEquipos(data.equipos || []);
-      setTareas(data.tareas || []);
-      
-      // Guardar en localStorage
-      saveToStorage(STORAGE_KEYS.CLIENTES, data.clientes || []);
-      saveToStorage(STORAGE_KEYS.EMPLEADOS, data.empleados || []);
-      saveToStorage(STORAGE_KEYS.EQUIPOS, data.equipos || []);
-      saveToStorage(STORAGE_KEYS.TAREAS, data.tareas || []);
-      
+      console.log('Datos restaurados correctamente');
       return true;
     } catch (error) {
       console.error('Error al restaurar datos:', error);
