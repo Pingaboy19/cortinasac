@@ -2,24 +2,12 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
-import syncService from '@/lib/services/syncService';
+import { saveData, loadData, setupStorageListener } from '../services/syncService';
 
-// Verificar si estamos en un entorno de navegador
-const isBrowser = typeof window !== 'undefined';
-
-// Claves para almacenamiento
-const STORAGE_KEYS = {
-  CLIENTES: 'crm_clientes',
-  EMPLEADOS: 'crm_empleados',
-  EQUIPOS: 'crm_equipos',
-  TAREAS: 'crm_tareas',
-  BACKUP: 'crm_backup'
-};
-
-// Interfaces para los tipos de datos
 interface Cliente {
   id: string;
   nombre: string;
+  email: string;
   telefono: string;
   direccion?: string;
   necesidades?: string;
@@ -30,6 +18,8 @@ interface Cliente {
 interface Empleado {
   id: string;
   nombre: string;
+  email: string;
+  rol: 'admin' | 'empleado';
   equipo: string;
   equipoTemporal?: string;
   comision: number;
@@ -42,7 +32,7 @@ interface Equipo {
   id: string;
   nombre: string;
   color: string;
-  members: string[]; // IDs de los empleados en el equipo
+  miembros: string[]; // IDs de los empleados en el equipo
   fechaCreacion: string;
   ultimaModificacion: string;
 }
@@ -51,30 +41,32 @@ export interface Tarea {
   id: string;
   titulo: string;
   descripcion: string;
-  estado: 'pendiente' | 'completada';
-  equipoId: string;
+  estado: 'pendiente' | 'en_progreso' | 'completada';
+  asignadoA: string;
+  fechaCreacion: string;
+  fechaVencimiento: string;
   comision: number;
-  fecha: string;
   observaciones: string;
   montoCobrado?: number;
   metodoPago?: 'efectivo' | 'tarjeta';
-  fechaCreacion: string;
-  ultimaModificacion: string;
 }
 
-// Tipo del contexto
 export interface CRMContextType {
   clientes: Cliente[];
   empleados: Empleado[];
   equipos: Equipo[];
   tareas: Tarea[];
-  agregarCliente: (cliente: Omit<Cliente, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => void;
-  agregarEmpleado: (empleado: Omit<Empleado, 'id' | 'fechaCreacion' | 'ultimaModificacion' | 'ultimaComision'>) => void;
-  agregarEquipo: (equipo: Omit<Equipo, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => void;
-  agregarTarea: (tarea: Omit<Tarea, 'id' | 'estado' | 'observaciones' | 'fechaCreacion' | 'ultimaModificacion'>) => void;
-  actualizarEmpleado: (id: string, datos: Partial<Empleado>) => void;
-  actualizarTarea: (id: string, datos: Partial<Tarea>) => void;
+  agregarCliente: (cliente: Cliente) => void;
+  actualizarCliente: (id: string, cliente: Cliente) => void;
+  eliminarCliente: (id: string) => void;
+  agregarEquipo: (equipo: Equipo) => void;
+  actualizarEquipo: (id: string, equipo: Equipo) => void;
   eliminarEquipo: (id: string) => void;
+  agregarEmpleado: (empleado: Empleado) => void;
+  actualizarEmpleado: (id: string, empleado: Empleado) => void;
+  eliminarEmpleado: (id: string) => void;
+  agregarTarea: (tarea: Tarea) => void;
+  actualizarTarea: (id: string, tarea: Tarea) => void;
   eliminarTarea: (id: string) => void;
   buscarClientePorNombre: (nombre: string) => Cliente[];
   agregarMiembroEquipo: (equipoId: string, empleadoId: string) => void;
@@ -82,31 +74,17 @@ export interface CRMContextType {
   obtenerMiembrosEquipo: (equipoId: string) => string[];
   respaldarDatos: () => void;
   restaurarDatos: () => void;
-  sincronizarAhora: () => void;
 }
 
-// Crear el contexto
-export const CRMContext = createContext<CRMContextType>({
-  clientes: [],
-  empleados: [],
-  equipos: [],
-  tareas: [],
-  agregarCliente: () => {},
-  agregarEmpleado: () => {},
-  agregarEquipo: () => {},
-  agregarTarea: () => {},
-  actualizarEmpleado: () => {},
-  actualizarTarea: () => {},
-  eliminarEquipo: () => {},
-  eliminarTarea: () => {},
-  buscarClientePorNombre: () => [],
-  agregarMiembroEquipo: () => {},
-  removerMiembroEquipo: () => {},
-  obtenerMiembrosEquipo: () => [],
-  respaldarDatos: () => {},
-  restaurarDatos: () => {},
-  sincronizarAhora: () => {}
-});
+const CRMContext = createContext<CRMContextType | null>(null);
+
+const STORAGE_KEYS = {
+  CLIENTES: 'crm_clientes',
+  EMPLEADOS: 'crm_empleados',
+  EQUIPOS: 'crm_equipos',
+  TAREAS: 'crm_tareas',
+  BACKUP: 'crm_backup'
+};
 
 // Función para obtener timestamp actual
 const getTimestamp = () => new Date().toISOString();
@@ -121,21 +99,16 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncInitialized, setSyncInitialized] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<number>(0);
 
   // Cargar datos al iniciar
   useEffect(() => {
-    // Solo ejecutar en el navegador
-    if (!isBrowser) return;
-    
     const loadData = () => {
       try {
-        console.log('Cargando datos iniciales del CRM...');
         // Cargar datos desde localStorage a través del servicio de sincronización
-        const clientesData = syncService.loadData(STORAGE_KEYS.CLIENTES) || [];
-        const empleadosData = syncService.loadData(STORAGE_KEYS.EMPLEADOS) || [];
-        const equiposData = syncService.loadData(STORAGE_KEYS.EQUIPOS) || [];
-        const tareasData = syncService.loadData(STORAGE_KEYS.TAREAS) || [];
+        const clientesData = loadData(STORAGE_KEYS.CLIENTES) || [];
+        const empleadosData = loadData(STORAGE_KEYS.EMPLEADOS) || [];
+        const equiposData = loadData(STORAGE_KEYS.EQUIPOS) || [];
+        const tareasData = loadData(STORAGE_KEYS.TAREAS) || [];
         
         // Actualizar estados
         setClientes(Array.isArray(clientesData) ? clientesData : []);
@@ -146,8 +119,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         const hoy = new Date().toISOString().split('T')[0];
         const tareasActualizadas = Array.isArray(tareasData) 
           ? tareasData.map((tarea: Tarea) => {
-              if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
-                return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
+              if (tarea.estado === 'pendiente' && tarea.fechaVencimiento < hoy) {
+                return { ...tarea, fechaVencimiento: hoy, ultimaModificacion: getTimestamp() };
               }
               return tarea;
             })
@@ -157,12 +130,10 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         
         // Si se actualizaron las tareas, guardar los cambios
         if (JSON.stringify(tareasData) !== JSON.stringify(tareasActualizadas)) {
-          syncService.saveData(STORAGE_KEYS.TAREAS, tareasActualizadas);
+          saveData(STORAGE_KEYS.TAREAS, tareasActualizadas);
         }
         
         setDataLoaded(true);
-        setLastSyncTime(Date.now());
-        console.log('Datos del CRM cargados correctamente');
       } catch (error) {
         console.error('Error al cargar datos:', error);
         setDataLoaded(true);
@@ -170,72 +141,59 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     };
     
     loadData();
-    
-    // Intentar cargar datos cada vez que la ventana obtiene el foco
-    const handleFocus = () => {
-      console.log('Ventana enfocada, recargando datos...');
-      loadData();
-    };
-    
-    window.addEventListener('focus', handleFocus);
-    
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
   }, []);
 
   // Configurar sincronización cuando los datos estén cargados
   useEffect(() => {
-    // Solo ejecutar en el navegador
-    if (!isBrowser || !dataLoaded || syncInitialized) return;
-    
-    console.log('Inicializando sistema de sincronización del CRM...');
-    
-    // Función para actualizar datos según la clave
-    const updateDataByKey = (key: string, newData: any) => {
-      console.log(`Actualizando datos para ${key}`);
-      switch (key) {
-        case STORAGE_KEYS.CLIENTES:
-          setClientes(Array.isArray(newData) ? newData : []);
-          break;
-        case STORAGE_KEYS.EMPLEADOS:
-          setEmpleados(Array.isArray(newData) ? newData : []);
-          break;
-        case STORAGE_KEYS.EQUIPOS:
-          setEquipos(Array.isArray(newData) ? newData : []);
-          break;
-        case STORAGE_KEYS.TAREAS:
-          setTareas(Array.isArray(newData) ? newData : []);
-          break;
-      }
-      setLastSyncTime(Date.now());
-    };
+    if (!dataLoaded || syncInitialized) return;
     
     // Configurar listener para cambios en localStorage (otras pestañas/ventanas)
-    const removeStorageListener = syncService.setupStorageListener(updateDataByKey);
+    const removeStorageListener = setupStorageListener((key, newData) => {
+      // Actualizar estado según la clave
+      switch (key) {
+        case STORAGE_KEYS.CLIENTES:
+          setClientes(newData);
+          break;
+        case STORAGE_KEYS.EMPLEADOS:
+          setEmpleados(newData);
+          break;
+        case STORAGE_KEYS.EQUIPOS:
+          setEquipos(newData);
+          break;
+        case STORAGE_KEYS.TAREAS:
+          setTareas(newData);
+          break;
+      }
+    });
     
     // Configurar sincronización periódica
-    const stopPeriodicSync = syncService.startPeriodicSync(
-      [STORAGE_KEYS.CLIENTES, STORAGE_KEYS.EMPLEADOS, STORAGE_KEYS.EQUIPOS, STORAGE_KEYS.TAREAS],
-      updateDataByKey
-    );
+    const stopPeriodicSync = setupStorageListener((key, newData) => {
+      // Actualizar estado según la clave
+      switch (key) {
+        case STORAGE_KEYS.CLIENTES:
+          setClientes(newData);
+          break;
+        case STORAGE_KEYS.EMPLEADOS:
+          setEmpleados(newData);
+          break;
+        case STORAGE_KEYS.EQUIPOS:
+          setEquipos(newData);
+          break;
+        case STORAGE_KEYS.TAREAS:
+          setTareas(newData);
+          break;
+      }
+    });
     
     // Configurar listener para eventos personalizados
     const handleDataUpdated = (event: CustomEvent) => {
-      const { key, timestamp, deviceId } = event.detail;
-      console.log(`Evento de actualización recibido para ${key} con timestamp ${timestamp} desde dispositivo ${deviceId}`);
-      
-      // Si el evento no es de este dispositivo, forzar recarga de datos
-      if (deviceId !== syncService.DEVICE_ID) {
-        const newData = syncService.loadData(key);
-        updateDataByKey(key, newData);
-      }
+      const { key, timestamp } = event.detail;
+      console.log(`Evento de actualización recibido para ${key} con timestamp ${timestamp}`);
     };
     
     window.addEventListener('data-updated', handleDataUpdated as EventListener);
     
     setSyncInitialized(true);
-    console.log('Sistema de sincronización del CRM inicializado correctamente');
     
     // Limpiar listeners al desmontar
     return () => {
@@ -247,33 +205,32 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   // Configurar intervalo para verificar y actualizar tareas pendientes
   useEffect(() => {
-    // Solo ejecutar en el navegador
-    if (!isBrowser || !dataLoaded) return;
+    if (!dataLoaded) return;
     
     const interval = setInterval(() => {
       const hoy = new Date().toISOString().split('T')[0];
       setTareas(prevTareas => {
         const tareasActualizadas = prevTareas.map(tarea => {
-          if (tarea.estado === 'pendiente' && tarea.fecha < hoy) {
-            return { ...tarea, fecha: hoy, ultimaModificacion: getTimestamp() };
+          if (tarea.estado === 'pendiente' && tarea.fechaVencimiento < hoy) {
+            return { ...tarea, fechaVencimiento: hoy, ultimaModificacion: getTimestamp() };
           }
           return tarea;
         });
         
         // Guardar solo si hay cambios
         if (JSON.stringify(prevTareas) !== JSON.stringify(tareasActualizadas)) {
-          syncService.saveData(STORAGE_KEYS.TAREAS, tareasActualizadas);
+          saveData(STORAGE_KEYS.TAREAS, tareasActualizadas);
         }
         
         return tareasActualizadas;
       });
-    }, 60000); // Verificar cada minuto
+    }, 3600000); // Verificar cada hora
     
     return () => clearInterval(interval);
   }, [dataLoaded]);
 
   // Funciones para manipular datos
-  const agregarCliente = (cliente: Omit<Cliente, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
+  const agregarCliente = (cliente: Cliente) => {
     const timestamp = getTimestamp();
     const nuevoCliente: Cliente = {
       ...cliente,
@@ -286,12 +243,26 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setClientes(nuevosClientes);
     
     // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.CLIENTES, nuevosClientes);
-    }
+    saveData(STORAGE_KEYS.CLIENTES, nuevosClientes);
   };
 
-  const agregarEmpleado = (empleado: Omit<Empleado, 'id' | 'fechaCreacion' | 'ultimaModificacion' | 'ultimaComision'>) => {
+  const actualizarCliente = (id: string, cliente: Cliente) => {
+    const nuevosClientes = clientes.map(c => c.id === id ? cliente : c);
+    setClientes(nuevosClientes);
+    
+    // Guardar con sincronización
+    saveData(STORAGE_KEYS.CLIENTES, nuevosClientes);
+  };
+
+  const eliminarCliente = (id: string) => {
+    const nuevosClientes = clientes.filter(c => c.id !== id);
+    setClientes(nuevosClientes);
+    
+    // Guardar con sincronización
+    saveData(STORAGE_KEYS.CLIENTES, nuevosClientes);
+  };
+
+  const agregarEmpleado = (empleado: Empleado) => {
     const timestamp = getTimestamp();
     const nuevoEmpleado: Empleado = {
       ...empleado,
@@ -305,12 +276,26 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEmpleados(nuevosEmpleados);
     
     // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
-    }
+    saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
   };
 
-  const agregarEquipo = (equipo: Omit<Equipo, 'id' | 'fechaCreacion' | 'ultimaModificacion'>) => {
+  const actualizarEmpleado = (id: string, empleado: Empleado) => {
+    const nuevosEmpleados = empleados.map(e => e.id === id ? empleado : e);
+    setEmpleados(nuevosEmpleados);
+    
+    // Guardar con sincronización
+    saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
+  };
+
+  const eliminarEmpleado = (id: string) => {
+    const nuevosEmpleados = empleados.filter(e => e.id !== id);
+    setEmpleados(nuevosEmpleados);
+    
+    // Guardar con sincronización
+    saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
+  };
+
+  const agregarEquipo = (equipo: Equipo) => {
     const timestamp = getTimestamp();
     const nuevoEquipo: Equipo = {
       ...equipo,
@@ -323,59 +308,15 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
-    }
+    saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
   };
 
-  const agregarTarea = (tarea: Omit<Tarea, 'id' | 'estado' | 'observaciones' | 'fechaCreacion' | 'ultimaModificacion'>) => {
-    const timestamp = getTimestamp();
-    const nuevaTarea: Tarea = {
-      ...tarea,
-      id: `tarea_${Date.now()}`,
-      estado: 'pendiente',
-      observaciones: '',
-      fechaCreacion: timestamp,
-      ultimaModificacion: timestamp
-    };
-    
-    const nuevasTareas = [...tareas, nuevaTarea];
-    setTareas(nuevasTareas);
+  const actualizarEquipo = (id: string, equipo: Equipo) => {
+    const nuevosEquipos = equipos.map(e => e.id === id ? equipo : e);
+    setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
-    }
-  };
-
-  const actualizarEmpleado = (id: string, datos: Partial<Empleado>) => {
-    const nuevosEmpleados = empleados.map(empleado => 
-      empleado.id === id 
-        ? { ...empleado, ...datos, ultimaModificacion: getTimestamp() } 
-        : empleado
-    );
-    
-    setEmpleados(nuevosEmpleados);
-    
-    // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
-    }
-  };
-
-  const actualizarTarea = (id: string, datos: Partial<Tarea>) => {
-    const nuevasTareas = tareas.map(tarea => 
-      tarea.id === id 
-        ? { ...tarea, ...datos, ultimaModificacion: getTimestamp() } 
-        : tarea
-    );
-    
-    setTareas(nuevasTareas);
-    
-    // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
-    }
+    saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
   };
 
   const eliminarEquipo = (id: string) => {
@@ -384,7 +325,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     if (equipo) {
       // Actualizar empleados para quitar la referencia al equipo eliminado
       const nuevosEmpleados = empleados.map(empleado => 
-        equipo.members.includes(empleado.id)
+        equipo.miembros.includes(empleado.id)
           ? { ...empleado, equipo: '', ultimaModificacion: getTimestamp() }
           : empleado
       );
@@ -392,9 +333,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       setEmpleados(nuevosEmpleados);
       
       // Guardar con sincronización
-      if (isBrowser) {
-        syncService.saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
-      }
+      saveData(STORAGE_KEYS.EMPLEADOS, nuevosEmpleados);
     }
     
     // Eliminar el equipo
@@ -402,19 +341,42 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
-    }
+    saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
   };
 
-  const eliminarTarea = (id: string) => {
-    const nuevasTareas = tareas.filter(tarea => tarea.id !== id);
+  const agregarTarea = (tarea: Tarea) => {
+    const timestamp = getTimestamp();
+    const nuevaTarea: Tarea = {
+      ...tarea,
+      id: `tarea_${Date.now()}`,
+      estado: 'pendiente',
+      observaciones: '',
+      fechaCreacion: timestamp,
+      fechaVencimiento: timestamp,
+      ultimaModificacion: timestamp
+    };
+    
+    const nuevasTareas = [...tareas, nuevaTarea];
     setTareas(nuevasTareas);
     
     // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
-    }
+    saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
+  };
+
+  const actualizarTarea = (id: string, tarea: Tarea) => {
+    const nuevasTareas = tareas.map(t => t.id === id ? tarea : t);
+    setTareas(nuevasTareas);
+    
+    // Guardar con sincronización
+    saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
+  };
+
+  const eliminarTarea = (id: string) => {
+    const nuevasTareas = tareas.filter(t => t.id !== id);
+    setTareas(nuevasTareas);
+    
+    // Guardar con sincronización
+    saveData(STORAGE_KEYS.TAREAS, nuevasTareas);
   };
 
   const buscarClientePorNombre = (nombre: string) => {
@@ -427,7 +389,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const agregarMiembroEquipo = (equipoId: string, empleadoId: string) => {
     // Verificar si el empleado ya está en otro equipo
     const equipoActual = equipos.find(eq => 
-      eq.id !== equipoId && eq.members.includes(empleadoId)
+      eq.id !== equipoId && eq.miembros.includes(empleadoId)
     );
     
     let nuevosEquipos = [...equipos];
@@ -438,7 +400,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         eq.id === equipoActual.id
           ? { 
               ...eq, 
-              members: eq.members.filter(id => id !== empleadoId),
+              miembros: eq.miembros.filter(id => id !== empleadoId),
               ultimaModificacion: getTimestamp()
             }
           : eq
@@ -450,7 +412,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       eq.id === equipoId
         ? { 
             ...eq, 
-            members: [...eq.members, empleadoId],
+            miembros: [...eq.miembros, empleadoId],
             ultimaModificacion: getTimestamp()
           }
         : eq
@@ -459,9 +421,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
-    }
+    saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
     
     // Actualizar el empleado
     actualizarEmpleado(empleadoId, { equipo: equipoId });
@@ -472,7 +432,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       eq.id === equipoId
         ? { 
             ...eq, 
-            members: eq.members.filter(id => id !== empleadoId),
+            miembros: eq.miembros.filter(id => id !== empleadoId),
             ultimaModificacion: getTimestamp()
           }
         : eq
@@ -481,9 +441,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setEquipos(nuevosEquipos);
     
     // Guardar con sincronización
-    if (isBrowser) {
-      syncService.saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
-    }
+    saveData(STORAGE_KEYS.EQUIPOS, nuevosEquipos);
     
     // Actualizar el empleado
     actualizarEmpleado(empleadoId, { equipo: '' });
@@ -491,13 +449,11 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   const obtenerMiembrosEquipo = (equipoId: string) => {
     const equipo = equipos.find(eq => eq.id === equipoId);
-    return equipo ? equipo.members : [];
+    return equipo ? equipo.miembros : [];
   };
 
   // Función para respaldar todos los datos
   const respaldarDatos = () => {
-    if (!isBrowser) return;
-    
     try {
       const timestamp = new Date().toISOString().replace(/:/g, '-');
       const backup = {
@@ -509,18 +465,16 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       };
       
       // Guardar con sincronización
-      syncService.saveData(`${STORAGE_KEYS.BACKUP}_${timestamp}`, backup);
+      saveData(`${STORAGE_KEYS.BACKUP}_${timestamp}`, backup);
       
       // Mantener solo los últimos 5 backups
-      if (isBrowser) {
-        const keys = Object.keys(localStorage)
-          .filter(key => key.startsWith(`${STORAGE_KEYS.BACKUP}_`))
-          .sort()
-          .reverse();
-        
-        if (keys.length > 5) {
-          keys.slice(5).forEach(key => localStorage.removeItem(key));
-        }
+      const keys = Object.keys(localStorage)
+        .filter(key => key.startsWith(`${STORAGE_KEYS.BACKUP}_`))
+        .sort()
+        .reverse();
+      
+      if (keys.length > 5) {
+        keys.slice(5).forEach(key => localStorage.removeItem(key));
       }
     } catch (error) {
       console.error('Error al respaldar datos:', error);
@@ -529,8 +483,6 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   // Función para restaurar desde un respaldo
   const restaurarDatos = () => {
-    if (!isBrowser) return;
-    
     try {
       // Obtener la lista de backups disponibles
       const keys = Object.keys(localStorage)
@@ -544,7 +496,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       }
       
       // Cargar el respaldo más reciente
-      const latestBackupData = syncService.loadData(keys[0]);
+      const latestBackupData = loadData(keys[0]);
       if (!latestBackupData) {
         console.warn('Respaldo no encontrado');
         return;
@@ -557,101 +509,53 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       setTareas(latestBackupData.tareas || []);
       
       // Guardar con sincronización
-      syncService.saveData(STORAGE_KEYS.CLIENTES, latestBackupData.clientes || []);
-      syncService.saveData(STORAGE_KEYS.EMPLEADOS, latestBackupData.empleados || []);
-      syncService.saveData(STORAGE_KEYS.EQUIPOS, latestBackupData.equipos || []);
-      syncService.saveData(STORAGE_KEYS.TAREAS, latestBackupData.tareas || []);
+      saveData(STORAGE_KEYS.CLIENTES, latestBackupData.clientes || []);
+      saveData(STORAGE_KEYS.EMPLEADOS, latestBackupData.empleados || []);
+      saveData(STORAGE_KEYS.EQUIPOS, latestBackupData.equipos || []);
+      saveData(STORAGE_KEYS.TAREAS, latestBackupData.tareas || []);
     } catch (error) {
       console.error('Error al restaurar datos:', error);
     }
   };
 
-  // Función para forzar sincronización inmediata
-  const sincronizarAhora = () => {
-    if (!isBrowser) return;
-    
-    console.log('Forzando sincronización inmediata de todos los datos...');
-    
-    // Función para actualizar datos según la clave
-    const updateDataByKey = (key: string, newData: any) => {
-      console.log(`Sincronización forzada: Actualizando datos para ${key}`);
-      switch (key) {
-        case STORAGE_KEYS.CLIENTES:
-          setClientes(Array.isArray(newData) ? newData : []);
-          break;
-        case STORAGE_KEYS.EMPLEADOS:
-          setEmpleados(Array.isArray(newData) ? newData : []);
-          break;
-        case STORAGE_KEYS.EQUIPOS:
-          setEquipos(Array.isArray(newData) ? newData : []);
-          break;
-        case STORAGE_KEYS.TAREAS:
-          setTareas(Array.isArray(newData) ? newData : []);
-          break;
-      }
-    };
-    
-    // Usar la nueva función forceSyncNow para forzar sincronización
-    syncService.forceSyncNow(
-      [STORAGE_KEYS.CLIENTES, STORAGE_KEYS.EMPLEADOS, STORAGE_KEYS.EQUIPOS, STORAGE_KEYS.TAREAS],
-      updateDataByKey
-    );
-    
-    setLastSyncTime(Date.now());
-    
-    // Notificar a otros dispositivos que deben sincronizar
-    if (isBrowser) {
-      try {
-        // Usar BroadcastChannel si está disponible
-        const bc = new BroadcastChannel('sync_channel');
-        bc.postMessage({ 
-          type: 'force-sync', 
-          timestamp: Date.now(), 
-          deviceId: syncService.DEVICE_ID 
-        });
-        bc.close();
-      } catch (e) {
-        // Fallback a localStorage
-        const syncMessage = {
-          type: 'force-sync',
-          timestamp: Date.now(),
-          deviceId: syncService.DEVICE_ID
-        };
-        localStorage.setItem('__sync_force', JSON.stringify(syncMessage));
-        localStorage.removeItem('__sync_force');
-      }
-    }
-    
-    console.log('Sincronización forzada completada. Última sincronización:', new Date(lastSyncTime).toLocaleTimeString());
+  const value = {
+    clientes,
+    empleados,
+    equipos,
+    tareas,
+    agregarCliente,
+    actualizarCliente,
+    eliminarCliente,
+    agregarEquipo,
+    actualizarEquipo,
+    eliminarEquipo,
+    agregarEmpleado,
+    actualizarEmpleado,
+    eliminarEmpleado,
+    agregarTarea,
+    actualizarTarea,
+    eliminarTarea,
+    buscarClientePorNombre,
+    agregarMiembroEquipo,
+    removerMiembroEquipo,
+    obtenerMiembrosEquipo,
+    respaldarDatos,
+    restaurarDatos
   };
 
   return (
-    <CRMContext.Provider value={{
-      clientes,
-      empleados,
-      equipos,
-      tareas,
-      agregarCliente,
-      agregarEmpleado,
-      agregarEquipo,
-      agregarTarea,
-      actualizarEmpleado,
-      actualizarTarea,
-      eliminarEquipo,
-      eliminarTarea,
-      buscarClientePorNombre,
-      agregarMiembroEquipo,
-      removerMiembroEquipo,
-      obtenerMiembrosEquipo,
-      respaldarDatos,
-      restaurarDatos,
-      sincronizarAhora
-    }}>
+    <CRMContext.Provider value={value}>
       {children}
     </CRMContext.Provider>
   );
 }
 
-export function useCRM() {
-  return useContext(CRMContext);
-} 
+export const useCRM = () => {
+  const context = useContext(CRMContext);
+  if (!context) {
+    throw new Error('useCRM debe ser usado dentro de un CRMProvider');
+  }
+  return context;
+};
+
+export default CRMContext; 
