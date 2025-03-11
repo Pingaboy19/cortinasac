@@ -9,8 +9,8 @@ const isBrowser = typeof window !== 'undefined';
 
 // Claves para almacenamiento
 const STORAGE_KEYS = {
-  CURRENT_USER: 'crm_current_user',
-  EMPLEADOS: 'crm_empleados',
+  CURRENT_USER: 'auth_current_user',
+  EMPLEADOS: 'auth_empleados',
   EMPLEADOS_BACKUP: 'crm_empleados_backup'
 };
 
@@ -34,6 +34,7 @@ interface AuthContextType {
   empleadosRegistrados: User[];
   empleadosConectados: User[];
   eliminarEmpleado: (id: string) => Promise<void>;
+  sincronizarAutenticacion: () => void;
 }
 
 const ADMIN_CREDENTIALS = {
@@ -50,7 +51,8 @@ export const AuthContext = createContext<AuthContextType>({
   registrarEmpleado: async () => false,
   empleadosRegistrados: [],
   empleadosConectados: [],
-  eliminarEmpleado: async () => {}
+  eliminarEmpleado: async () => {},
+  sincronizarAutenticacion: () => {}
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -63,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [empleadosConectados, setEmpleadosConectados] = useState<User[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncInitialized, setSyncInitialized] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<number>(0);
 
   // Cargar estado inicial
   useEffect(() => {
@@ -71,11 +74,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const loadData = () => {
       try {
+        console.log('Cargando datos de autenticación...');
         // Cargar usuario actual
         const currentUser = syncService.loadData(STORAGE_KEYS.CURRENT_USER);
         if (currentUser) {
           setUser(currentUser);
           setIsAuthenticated(true);
+          console.log('Usuario autenticado cargado:', currentUser.username);
         }
         
         // Cargar empleados
@@ -83,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (empleadosData && Array.isArray(empleadosData)) {
           // Asegurar que todos los empleados tengan los campos requeridos
           const empleadosValidados = empleadosData.map((emp: any) => ({
-            id: emp.id || `empleado_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: emp.id || `empleado_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
             username: emp.username || 'Usuario sin nombre',
             role: emp.role || 'empleado',
             isConnected: emp.isConnected || false,
@@ -100,16 +105,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           const conectados = empleadosValidados.filter((emp: User) => emp.isConnected);
           setEmpleadosConectados(conectados);
+          console.log(`Empleados cargados: ${empleadosValidados.length}, Conectados: ${conectados.length}`);
         }
         
         setDataLoaded(true);
+        setLastSyncTime(Date.now());
+        console.log('Datos de autenticación cargados correctamente');
       } catch (error) {
-        console.error('Error al cargar datos:', error);
+        console.error('Error al cargar datos de autenticación:', error);
         setDataLoaded(true);
       }
     };
     
     loadData();
+    
+    // Intentar cargar datos cada vez que la ventana obtiene el foco
+    const handleFocus = () => {
+      console.log('Ventana enfocada, recargando datos de autenticación...');
+      loadData();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Configurar sincronización cuando los datos estén cargados
@@ -117,35 +137,143 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Solo ejecutar en el navegador
     if (!isBrowser || !dataLoaded || syncInitialized) return;
     
-    // Configurar listener para cambios en localStorage (otras pestañas/ventanas)
-    const removeStorageListener = syncService.setupStorageListener((key, newData) => {
+    console.log('Inicializando sistema de sincronización de autenticación...');
+    
+    // Función para actualizar datos según la clave
+    const updateAuthData = (key: string, newData: any) => {
+      console.log(`Actualizando datos de autenticación para ${key}`);
+      
       if (key === STORAGE_KEYS.EMPLEADOS && Array.isArray(newData)) {
         setEmpleadosRegistrados(newData);
         const conectados = newData.filter((emp: User) => emp.isConnected);
         setEmpleadosConectados(conectados);
+        console.log(`Empleados actualizados: ${newData.length}, Conectados: ${conectados.length}`);
+      } else if (key === STORAGE_KEYS.CURRENT_USER) {
+        // Solo actualizar si no hay usuario o si el ID coincide
+        if (!user || (newData && user.id === newData.id)) {
+          setUser(newData);
+          setIsAuthenticated(!!newData);
+          console.log('Usuario actual actualizado:', newData ? newData.username : 'Ninguno');
+        }
       }
-    });
+      
+      setLastSyncTime(Date.now());
+    };
+    
+    // Configurar listener para cambios en localStorage (otras pestañas/ventanas)
+    const removeStorageListener = syncService.setupStorageListener(updateAuthData);
     
     // Configurar sincronización periódica
     const stopPeriodicSync = syncService.startPeriodicSync(
-      [STORAGE_KEYS.EMPLEADOS],
-      (key, newData) => {
-        if (key === STORAGE_KEYS.EMPLEADOS && Array.isArray(newData)) {
-          setEmpleadosRegistrados(newData);
-          const conectados = newData.filter((emp: User) => emp.isConnected);
-          setEmpleadosConectados(conectados);
-        }
-      }
+      [STORAGE_KEYS.EMPLEADOS, STORAGE_KEYS.CURRENT_USER],
+      updateAuthData
     );
     
+    // Configurar listener para eventos personalizados
+    const handleDataUpdated = (event: CustomEvent) => {
+      const { key, timestamp, deviceId } = event.detail;
+      
+      if (key === STORAGE_KEYS.EMPLEADOS || key === STORAGE_KEYS.CURRENT_USER) {
+        console.log(`Evento de actualización de autenticación recibido para ${key} con timestamp ${timestamp} desde dispositivo ${deviceId}`);
+        
+        // Si el evento no es de este dispositivo, forzar recarga de datos
+        if (deviceId !== syncService.DEVICE_ID) {
+          const newData = syncService.loadData(key);
+          updateAuthData(key, newData);
+        }
+      }
+    };
+    
+    // Configurar listener para eventos de sincronización forzada
+    const handleForceSyncEvent = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'force-sync') {
+        console.log('Recibida solicitud de sincronización forzada desde otro dispositivo');
+        sincronizarAutenticacion();
+      }
+    };
+    
+    // Intentar configurar BroadcastChannel para eventos entre pestañas
+    let broadcastChannel: BroadcastChannel | null = null;
+    try {
+      broadcastChannel = new BroadcastChannel('sync_channel');
+      broadcastChannel.addEventListener('message', handleForceSyncEvent);
+    } catch (e) {
+      console.warn('BroadcastChannel no disponible para sincronización de autenticación');
+    }
+    
+    window.addEventListener('data-updated', handleDataUpdated as EventListener);
+    
     setSyncInitialized(true);
+    console.log('Sistema de sincronización de autenticación inicializado correctamente');
     
     // Limpiar listeners al desmontar
     return () => {
       removeStorageListener();
       stopPeriodicSync();
+      window.removeEventListener('data-updated', handleDataUpdated as EventListener);
+      if (broadcastChannel) {
+        broadcastChannel.removeEventListener('message', handleForceSyncEvent);
+        broadcastChannel.close();
+      }
     };
-  }, [dataLoaded, syncInitialized]);
+  }, [dataLoaded, syncInitialized, user]);
+
+  // Función para forzar sincronización inmediata
+  const sincronizarAutenticacion = () => {
+    if (!isBrowser) return;
+    
+    console.log('Forzando sincronización inmediata de datos de autenticación...');
+    
+    // Función para actualizar datos según la clave
+    const updateAuthData = (key: string, newData: any) => {
+      console.log(`Sincronización forzada: Actualizando datos de autenticación para ${key}`);
+      
+      if (key === STORAGE_KEYS.EMPLEADOS && Array.isArray(newData)) {
+        setEmpleadosRegistrados(newData);
+        const conectados = newData.filter((emp: User) => emp.isConnected);
+        setEmpleadosConectados(conectados);
+      } else if (key === STORAGE_KEYS.CURRENT_USER) {
+        // Solo actualizar si no hay usuario o si el ID coincide
+        if (!user || (newData && user.id === newData.id)) {
+          setUser(newData);
+          setIsAuthenticated(!!newData);
+        }
+      }
+    };
+    
+    // Usar la nueva función forceSyncNow para forzar sincronización
+    syncService.forceSyncNow(
+      [STORAGE_KEYS.EMPLEADOS, STORAGE_KEYS.CURRENT_USER],
+      updateAuthData
+    );
+    
+    setLastSyncTime(Date.now());
+    
+    // Notificar a otros dispositivos que deben sincronizar
+    if (isBrowser) {
+      try {
+        // Usar BroadcastChannel si está disponible
+        const bc = new BroadcastChannel('sync_channel');
+        bc.postMessage({ 
+          type: 'force-sync-auth', 
+          timestamp: Date.now(), 
+          deviceId: syncService.DEVICE_ID 
+        });
+        bc.close();
+      } catch (e) {
+        // Fallback a localStorage
+        const syncMessage = {
+          type: 'force-sync-auth',
+          timestamp: Date.now(),
+          deviceId: syncService.DEVICE_ID
+        };
+        localStorage.setItem('__sync_force_auth', JSON.stringify(syncMessage));
+        localStorage.removeItem('__sync_force_auth');
+      }
+    }
+    
+    console.log('Sincronización forzada de autenticación completada. Última sincronización:', new Date(lastSyncTime).toLocaleTimeString());
+  };
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
@@ -345,7 +473,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registrarEmpleado,
       empleadosRegistrados,
       empleadosConectados,
-      eliminarEmpleado
+      eliminarEmpleado,
+      sincronizarAutenticacion
     }}>
       {children}
     </AuthContext.Provider>

@@ -82,6 +82,7 @@ export interface CRMContextType {
   obtenerMiembrosEquipo: (equipoId: string) => string[];
   respaldarDatos: () => void;
   restaurarDatos: () => void;
+  sincronizarAhora: () => void;
 }
 
 // Crear el contexto
@@ -103,7 +104,8 @@ export const CRMContext = createContext<CRMContextType>({
   removerMiembroEquipo: () => {},
   obtenerMiembrosEquipo: () => [],
   respaldarDatos: () => {},
-  restaurarDatos: () => {}
+  restaurarDatos: () => {},
+  sincronizarAhora: () => {}
 });
 
 // Función para obtener timestamp actual
@@ -119,6 +121,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncInitialized, setSyncInitialized] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<number>(0);
 
   // Cargar datos al iniciar
   useEffect(() => {
@@ -127,6 +130,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     
     const loadData = () => {
       try {
+        console.log('Cargando datos iniciales del CRM...');
         // Cargar datos desde localStorage a través del servicio de sincronización
         const clientesData = syncService.loadData(STORAGE_KEYS.CLIENTES) || [];
         const empleadosData = syncService.loadData(STORAGE_KEYS.EMPLEADOS) || [];
@@ -157,6 +161,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         }
         
         setDataLoaded(true);
+        setLastSyncTime(Date.now());
+        console.log('Datos del CRM cargados correctamente');
       } catch (error) {
         console.error('Error al cargar datos:', error);
         setDataLoaded(true);
@@ -164,6 +170,18 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     };
     
     loadData();
+    
+    // Intentar cargar datos cada vez que la ventana obtiene el foco
+    const handleFocus = () => {
+      console.log('Ventana enfocada, recargando datos...');
+      loadData();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Configurar sincronización cuando los datos estén cargados
@@ -171,56 +189,53 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     // Solo ejecutar en el navegador
     if (!isBrowser || !dataLoaded || syncInitialized) return;
     
-    // Configurar listener para cambios en localStorage (otras pestañas/ventanas)
-    const removeStorageListener = syncService.setupStorageListener((key, newData) => {
-      // Actualizar estado según la clave
+    console.log('Inicializando sistema de sincronización del CRM...');
+    
+    // Función para actualizar datos según la clave
+    const updateDataByKey = (key: string, newData: any) => {
+      console.log(`Actualizando datos para ${key}`);
       switch (key) {
         case STORAGE_KEYS.CLIENTES:
-          setClientes(newData);
+          setClientes(Array.isArray(newData) ? newData : []);
           break;
         case STORAGE_KEYS.EMPLEADOS:
-          setEmpleados(newData);
+          setEmpleados(Array.isArray(newData) ? newData : []);
           break;
         case STORAGE_KEYS.EQUIPOS:
-          setEquipos(newData);
+          setEquipos(Array.isArray(newData) ? newData : []);
           break;
         case STORAGE_KEYS.TAREAS:
-          setTareas(newData);
+          setTareas(Array.isArray(newData) ? newData : []);
           break;
       }
-    });
+      setLastSyncTime(Date.now());
+    };
+    
+    // Configurar listener para cambios en localStorage (otras pestañas/ventanas)
+    const removeStorageListener = syncService.setupStorageListener(updateDataByKey);
     
     // Configurar sincronización periódica
     const stopPeriodicSync = syncService.startPeriodicSync(
       [STORAGE_KEYS.CLIENTES, STORAGE_KEYS.EMPLEADOS, STORAGE_KEYS.EQUIPOS, STORAGE_KEYS.TAREAS],
-      (key, newData) => {
-        // Actualizar estado según la clave
-        switch (key) {
-          case STORAGE_KEYS.CLIENTES:
-            setClientes(newData);
-            break;
-          case STORAGE_KEYS.EMPLEADOS:
-            setEmpleados(newData);
-            break;
-          case STORAGE_KEYS.EQUIPOS:
-            setEquipos(newData);
-            break;
-          case STORAGE_KEYS.TAREAS:
-            setTareas(newData);
-            break;
-        }
-      }
+      updateDataByKey
     );
     
     // Configurar listener para eventos personalizados
     const handleDataUpdated = (event: CustomEvent) => {
-      const { key, timestamp } = event.detail;
-      console.log(`Evento de actualización recibido para ${key} con timestamp ${timestamp}`);
+      const { key, timestamp, deviceId } = event.detail;
+      console.log(`Evento de actualización recibido para ${key} con timestamp ${timestamp} desde dispositivo ${deviceId}`);
+      
+      // Si el evento no es de este dispositivo, forzar recarga de datos
+      if (deviceId !== syncService.DEVICE_ID) {
+        const newData = syncService.loadData(key);
+        updateDataByKey(key, newData);
+      }
     };
     
     window.addEventListener('data-updated', handleDataUpdated as EventListener);
     
     setSyncInitialized(true);
+    console.log('Sistema de sincronización del CRM inicializado correctamente');
     
     // Limpiar listeners al desmontar
     return () => {
@@ -252,7 +267,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         
         return tareasActualizadas;
       });
-    }, 3600000); // Verificar cada hora
+    }, 60000); // Verificar cada minuto
     
     return () => clearInterval(interval);
   }, [dataLoaded]);
@@ -551,6 +566,65 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Función para forzar sincronización inmediata
+  const sincronizarAhora = () => {
+    if (!isBrowser) return;
+    
+    console.log('Forzando sincronización inmediata de todos los datos...');
+    
+    // Función para actualizar datos según la clave
+    const updateDataByKey = (key: string, newData: any) => {
+      console.log(`Sincronización forzada: Actualizando datos para ${key}`);
+      switch (key) {
+        case STORAGE_KEYS.CLIENTES:
+          setClientes(Array.isArray(newData) ? newData : []);
+          break;
+        case STORAGE_KEYS.EMPLEADOS:
+          setEmpleados(Array.isArray(newData) ? newData : []);
+          break;
+        case STORAGE_KEYS.EQUIPOS:
+          setEquipos(Array.isArray(newData) ? newData : []);
+          break;
+        case STORAGE_KEYS.TAREAS:
+          setTareas(Array.isArray(newData) ? newData : []);
+          break;
+      }
+    };
+    
+    // Usar la nueva función forceSyncNow para forzar sincronización
+    syncService.forceSyncNow(
+      [STORAGE_KEYS.CLIENTES, STORAGE_KEYS.EMPLEADOS, STORAGE_KEYS.EQUIPOS, STORAGE_KEYS.TAREAS],
+      updateDataByKey
+    );
+    
+    setLastSyncTime(Date.now());
+    
+    // Notificar a otros dispositivos que deben sincronizar
+    if (isBrowser) {
+      try {
+        // Usar BroadcastChannel si está disponible
+        const bc = new BroadcastChannel('sync_channel');
+        bc.postMessage({ 
+          type: 'force-sync', 
+          timestamp: Date.now(), 
+          deviceId: syncService.DEVICE_ID 
+        });
+        bc.close();
+      } catch (e) {
+        // Fallback a localStorage
+        const syncMessage = {
+          type: 'force-sync',
+          timestamp: Date.now(),
+          deviceId: syncService.DEVICE_ID
+        };
+        localStorage.setItem('__sync_force', JSON.stringify(syncMessage));
+        localStorage.removeItem('__sync_force');
+      }
+    }
+    
+    console.log('Sincronización forzada completada. Última sincronización:', new Date(lastSyncTime).toLocaleTimeString());
+  };
+
   return (
     <CRMContext.Provider value={{
       clientes,
@@ -570,7 +644,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       removerMiembroEquipo,
       obtenerMiembrosEquipo,
       respaldarDatos,
-      restaurarDatos
+      restaurarDatos,
+      sincronizarAhora
     }}>
       {children}
     </CRMContext.Provider>
