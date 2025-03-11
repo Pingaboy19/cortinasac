@@ -9,58 +9,50 @@ import Sidebar from '@/components/ui/Sidebar';
 interface Equipo {
   id: string;
   nombre: string;
-  color: string;
-  miembros: string[];
-  fechaCreacion: string;
-  ultimaModificacion: string;
+  members: string[];
 }
 
-interface Empleado {
+interface Member {
   id: string;
-  nombre: string;
-  email: string;
-  rol: 'admin' | 'empleado';
-  equipo: string;
-  comision: number;
-  ultimaComision: string;
+  username: string;
+  role: 'admin' | 'empleado';
 }
 
 export default function MiEquipoPage() {
+  const { isAuthenticated, user, empleadosRegistrados } = useAuth();
+  const { equipos } = useCRM();
   const router = useRouter();
-  const { user } = useAuth();
-  const { equipos, empleados } = useCRM();
-  const [miEquipo, setMiEquipo] = useState<Equipo | null>(null);
-  const [miembrosEquipo, setMiembrosEquipo] = useState<Empleado[]>([]);
   const [seccionActiva, setSeccionActiva] = useState('miequipo');
 
   useEffect(() => {
-    if (!user) {
+    if (!isAuthenticated || user?.role === 'admin') {
       router.push('/auth/login');
-      return;
     }
+  }, [isAuthenticated, user, router]);
 
-    // Encontrar el equipo del empleado
-    const equipoEncontrado = equipos.find((equipo: Equipo) =>
-      equipo.miembros.includes(user.id)
-    );
+  if (!isAuthenticated || !user || user.role === 'admin') {
+    return null;
+  }
 
-    if (equipoEncontrado) {
-      setMiEquipo(equipoEncontrado);
-      
-      // Encontrar los empleados que son miembros del equipo
-      const miembros = empleados.filter((empleado: Empleado) =>
-        equipoEncontrado.miembros.includes(empleado.id)
-      );
-      setMiembrosEquipo(miembros);
-    }
-  }, [user, equipos, empleados, router]);
+  // Encontrar el equipo del empleado
+  const miEquipo = equipos.find((equipo: Equipo) => 
+    equipo.members.includes(user.id)
+  );
 
-  if (!user) return null;
+  // Obtener información de los miembros del equipo
+  const miembrosEquipo = miEquipo?.members.map(memberId => {
+    const miembro = empleadosRegistrados.find(emp => emp.id === memberId);
+    return {
+      id: memberId,
+      username: miembro?.username || 'Usuario no encontrado',
+      role: miembro?.role || 'empleado'
+    };
+  }) || [];
 
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar 
-        isAdmin={user.role === 'admin'}
+        isAdmin={false}
         username={user.username}
         seccionActiva={seccionActiva}
         onCambiarSeccion={(seccion) => {
@@ -68,58 +60,39 @@ export default function MiEquipoPage() {
           router.push(`/dashboard/${seccion}`);
         }}
       />
-      <main className="flex-1 p-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Mi Equipo</h1>
-        
-        {miEquipo ? (
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center mb-6">
-              <div 
-                className="w-6 h-6 rounded-full mr-3"
-                style={{ backgroundColor: miEquipo.color }}
-              />
-              <h2 className="text-2xl font-semibold text-gray-900">
-                {miEquipo.nombre}
-              </h2>
-            </div>
-            
-            <div className="space-y-6">
-              <h3 className="text-xl font-medium text-gray-900">
-                Miembros del Equipo
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {miembrosEquipo.map((miembro) => (
-                  <div 
-                    key={miembro.id}
-                    className="bg-gray-50 rounded-lg p-4 flex items-center"
-                  >
-                    <div className="flex-shrink-0 mr-4">
-                      <span className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-medium">
-                        {miembro.nombre[0].toUpperCase()}
-                      </span>
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-medium text-gray-900">
-                        {miembro.nombre}
-                        {miembro.id === user.id && ' (Tú)'}
-                      </h4>
-                      <p className="text-sm text-gray-600">
-                        {miembro.rol === 'admin' ? 'Administrador' : 'Empleado'}
-                      </p>
-                    </div>
+      <main className="flex-1 p-8 overflow-y-auto">
+        <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">
+            {miEquipo?.nombre || 'Mi Equipo'}
+          </h1>
+          
+          <div className="mt-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Miembros del Equipo</h2>
+            <div className="space-y-4">
+              {miembrosEquipo.map((miembro) => (
+                <div 
+                  key={miembro.id}
+                  className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
+                >
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span className="text-blue-600 font-medium">
+                      {miembro.username[0]?.toUpperCase()}
+                    </span>
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <p className="text-gray-900 font-medium">
+                      {miembro.username}
+                      {miembro.id === user.id && ' (Tú)'}
+                    </p>
+                    <p className="text-gray-600 text-sm">
+                      {miembro.id === user.id ? 'Miembro del equipo (Tú)' : 'Compañero de equipo'}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600">
-              No estás asignado a ningún equipo actualmente.
-            </p>
-          </div>
-        )}
+        </div>
       </main>
     </div>
   );
