@@ -3,11 +3,31 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useCRM } from '@/lib/contexts/CRMContext';
-import { FiMenu, FiX } from 'react-icons/fi';
-import { FaSync } from 'react-icons/fa';
 
 // Verificar si estamos en un entorno de navegador
 const isBrowser = typeof window !== 'undefined';
+
+// Componentes de iconos simples como fallback
+const MenuIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="3" y1="12" x2="21" y2="12"></line>
+    <line x1="3" y1="6" x2="21" y2="6"></line>
+    <line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18"></line>
+    <line x1="6" y1="6" x2="18" y2="18"></line>
+  </svg>
+);
+
+const SyncIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+  </svg>
+);
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -75,7 +95,7 @@ export default function Sidebar() {
         className="fixed top-4 left-4 z-50 md:hidden bg-blue-600 text-white p-2 rounded-md"
         aria-label={isOpen ? "Cerrar menú" : "Abrir menú"}
       >
-        {isOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+        {isOpen ? <CloseIcon /> : <MenuIcon />}
       </button>
 
       {/* Overlay para cerrar el menú en móvil */}
@@ -127,7 +147,9 @@ export default function Sidebar() {
             disabled={isSyncing}
             className="flex items-center justify-center w-full px-4 py-2 mb-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
           >
-            <FaSync className={`mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span className={`inline-block ${isSyncing ? 'animate-spin' : ''}`}>
+              <SyncIcon />
+            </span>
             {syncMessage || 'Sincronizar'}
           </button>
           
